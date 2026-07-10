@@ -91,6 +91,7 @@
       <h3 id="dp-title">—</h3>
       <span id="dp-badge" class="sev-badge"></span>
     </div>
+    <button class="share-btn" id="dp-share">Share</button>
     <button class="dp-close" id="dp-close">&#x2715;</button>
   </div>
   <div class="dp-body">
@@ -118,6 +119,13 @@
       <div id="hist-table" class="hist-table"></div>
     </section>
   </div>
+</div>
+
+<div id="share-menu" class="share-menu hidden">
+  <a id="share-x" class="share-opt" target="_blank" rel="noopener">Share on X</a>
+  <a id="share-bsky" class="share-opt" target="_blank" rel="noopener">Share on Bluesky</a>
+  <button id="share-mastodon" class="share-opt">Share on Mastodon</button>
+  <button id="share-copy" class="share-opt">Copy link</button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>

@@ -265,6 +265,49 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border-color: var(--border);
 }
 
+.share-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+}
+.share-btn:hover { color: var(--text); border-color: var(--accent); }
+
+.share-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 160px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.share-menu.hidden { display: none; }
+.share-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.share-opt:hover { background: var(--bg3); }
+
 .loading {
   padding: 24px 16px;
   color: var(--text-dim);
