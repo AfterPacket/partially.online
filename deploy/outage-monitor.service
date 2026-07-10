@@ -1,0 +1,26 @@
+[Unit]
+Description=Internet Outage Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=outagemonitor
+Group=outagemonitor
+WorkingDirectory=/opt/internet-outage-monitor
+Environment=PATH=/opt/internet-outage-monitor/venv/bin
+ExecStart=/opt/internet-outage-monitor/venv/bin/python run.py
+Restart=on-failure
+RestartSec=5
+
+# The APScheduler jobs (collection + probing) and Trinocular belief state
+# all live in-process — do not run this under multiple workers/processes,
+# each would run its own independent scheduler and duplicate collection.
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/internet-outage-monitor
+
+[Install]
+WantedBy=multi-user.target

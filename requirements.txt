@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx
+sqlalchemy
+apscheduler>=3.10
+python-dotenv
+aiofiles

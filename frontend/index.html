@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Internet Outage Monitor</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    </svg>
+    <span>Internet Outage Monitor</span>
+  </div>
+  <div class="header-stats">
+    <span class="hstat" id="hstat-active">
+      <span class="dot dot-active"></span>
+      <strong id="val-active">–</strong> active events
+    </span>
+    <span class="hstat" id="hstat-severe">
+      <span class="dot dot-severe"></span>
+      <strong id="val-severe">–</strong> severe
+    </span>
+    <span class="hstat-time" id="hstat-time">–</span>
+  </div>
+  <div class="live-badge"><span class="live-pulse"></span>LIVE</div>
+</header>
+
+<div class="layout">
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="legend">
+      <div class="legend-title">Severity</div>
+      <div class="legend-row"><span class="lswatch sev-severe"></span>Severe</div>
+      <div class="legend-row"><span class="lswatch sev-significant"></span>Significant</div>
+      <div class="legend-row"><span class="lswatch sev-minor"></span>Minor</div>
+      <div class="legend-row"><span class="lswatch sev-normal"></span>Normal</div>
+    </div>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <h2>Active Events</h2>
+      <div class="filters">
+        <select id="filter-sev" class="filter-sel">
+          <option value="">All severities</option>
+          <option value="severe">Severe</option>
+          <option value="significant">Significant</option>
+          <option value="minor">Minor</option>
+        </select>
+        <select id="filter-type" class="filter-sel">
+          <option value="">All types</option>
+          <option value="shutdown">Shutdown</option>
+          <option value="disruption">Disruption</option>
+          <option value="censorship">Censorship</option>
+        </select>
+      </div>
+    </div>
+    <div id="event-list" class="event-list">
+      <div class="loading">Loading events&hellip;</div>
+    </div>
+  </aside>
+
+</div>
+
+<div id="resolved-bar" class="resolved-bar hidden">
+  <div class="resolved-bar-header" id="resolved-toggle">
+    <span class="resolved-bar-title">
+      <span class="resolved-icon">&#10003;</span> Recently Resolved
+    </span>
+    <span class="resolved-count" id="resolved-count"></span>
+    <span class="resolved-chevron" id="resolved-chevron">&#9660;</span>
+  </div>
+  <div id="resolved-list" class="resolved-list"></div>
+</div>
+
+<div id="detail-panel" class="detail-panel hidden">
+  <div class="dp-header">
+    <div class="dp-title-row">
+      <h3 id="dp-title">—</h3>
+      <span id="dp-badge" class="sev-badge"></span>
+    </div>
+    <button class="dp-close" id="dp-close">&#x2715;</button>
+  </div>
+  <div class="dp-body">
+    <section class="dp-section">
+      <h4>Active Events</h4>
+      <div id="dp-events"></div>
+    </section>
+    <section class="dp-section">
+      <div class="dp-section-head">
+        <h4>History</h4>
+        <div class="hist-controls">
+          <select id="hist-category" class="filter-sel">
+            <option value="">All types</option>
+            <option value="outages">Outages</option>
+            <option value="censorship">Censorship</option>
+          </select>
+          <select id="hist-days" class="filter-sel">
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="180">180 days</option>
+          </select>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="hist-chart"></canvas></div>
+      <div id="hist-table" class="hist-table"></div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="/js/map.js"></script>
+<script src="/js/charts.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
