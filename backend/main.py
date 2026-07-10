@@ -15,7 +15,7 @@ from .config import config
 from .database import get_db, init_db
 from .models import OutageEvent
 from .scheduler import run_api_collection, run_probe_collection, start_scheduler, stop_scheduler
-from .security import SecurityHeadersMiddleware, rate_limit
+from .security import SecurityHeadersMiddleware, rate_limit, require_admin
 
 logging.basicConfig(
     level=logging.INFO,
@@ -213,6 +213,30 @@ def api_events_resolved(
         .all()
     )
     return {"events": [_e(r) for r in rows], "total": len(rows)}
+
+
+# ── Admin endpoints (require X-Admin-Key header, see security.require_admin) ──
+
+@app.post("/api/admin/refresh", dependencies=[Depends(require_admin)])
+async def api_admin_refresh():
+    """
+    Trigger an IODA/OONI/Cloudflare collection cycle immediately, instead of
+    waiting for the next scheduled run (every COLLECTION_INTERVAL_MINUTES).
+    Runs in the background — this returns as soon as the cycle is queued,
+    not once it's finished.
+    """
+    asyncio.create_task(run_api_collection())
+    return {"status": "ok", "message": "API collection cycle triggered"}
+
+
+@app.post("/api/admin/probe", dependencies=[Depends(require_admin)])
+async def api_admin_probe():
+    """
+    Trigger a Trinocular probe confirmation cycle immediately, instead of
+    waiting for the next scheduled run (every PROBE_INTERVAL_MINUTES).
+    """
+    asyncio.create_task(run_probe_collection())
+    return {"status": "ok", "message": "Probe cycle triggered"}
 
 
 # ── Static frontend ───────────────────────────────────────────────────────────
