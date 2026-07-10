@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -14,9 +15,29 @@ from .database import SessionLocal
 log = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
+# APScheduler's own max_instances=1 (its default) only stops a job from
+# overlapping with itself. It does nothing for the /api/admin/refresh and
+# /api/admin/probe endpoints, which fire these same functions directly via
+# asyncio.create_task — so a manual trigger could run concurrently with a
+# scheduled cycle (or another manual trigger). Two sessions racing to
+# upsert_events()/_reset_belief_for_new_event() the same not-yet-committed
+# rows produces sqlite "UNIQUE constraint failed" errors that roll back the
+# whole batch. These locks make each cycle mutually exclusive regardless of
+# what triggered it.
+_api_lock   = asyncio.Lock()
+_probe_lock = asyncio.Lock()
+
 
 async def run_api_collection():
     """API cycle: IODA + OONI + Cloudflare  (every 15 min, lightweight)."""
+    if _api_lock.locked():
+        log.info("API collection cycle already running — skipping overlap")
+        return
+    async with _api_lock:
+        await _run_api_collection()
+
+
+async def _run_api_collection():
     log.info("API collection cycle starting...")
     all_events: list = []
     for Cls in (IODACollector, OONICollector, CloudflareRadarCollector):
@@ -50,6 +71,14 @@ async def run_api_collection():
 
 async def run_probe_collection():
     """Probe cycle: Trinocular-style confirmation of active events (every 30 min)."""
+    if _probe_lock.locked():
+        log.info("Probe cycle already running — skipping overlap")
+        return
+    async with _probe_lock:
+        await _run_probe_collection()
+
+
+async def _run_probe_collection():
     log.info("Probe confirmation cycle starting...")
     col = ProbeCollector()
     try:
