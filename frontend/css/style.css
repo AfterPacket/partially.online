@@ -556,3 +556,43 @@ path.leaflet-interactive:focus-visible { outline: none; }
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.55; }
 }
+
+/* ── Mobile ──────────────────────────────────────────────────────
+   Everything above assumes a persistent 340px side-by-side sidebar
+   (.sidebar's width, and .detail-panel/.resolved-bar's `right` offset
+   both key off --sidebar-w). On a phone that alone leaves ~35-90px for
+   the map and pushes the fixed-position panels nearly off-screen, so
+   below this breakpoint the sidebar drops under the map instead of
+   beside it, and the panels reclaim the full width since there's no
+   side gap left to avoid. */
+@media (max-width: 768px) {
+  .header { padding: 0 10px; gap: 10px; }
+  .brand span { display: none; }             /* icon only -- reclaim space for stats */
+  .header-stats { gap: 10px; }
+  .hstat { font-size: 12px; }
+  .hstat-time { display: none; }             /* least essential stat, drop first */
+  .live-badge { padding: 4px 9px; font-size: 10px; }
+
+  .layout { flex-direction: column; }
+
+  .map-wrap { flex: 0 0 42%; width: 100%; }
+  .legend { padding: 6px 8px; min-width: 90px; bottom: 8px; left: 8px; }
+  .legend-title { font-size: 9px; margin-bottom: 4px; }
+  .legend-row { font-size: 11px; margin-bottom: 3px; gap: 6px; }
+
+  .sidebar { width: 100%; flex: 1; min-height: 0; border-left: none; border-top: 1px solid var(--border); }
+
+  /* No side panel to leave room for anymore -- these can use the full width. */
+  .detail-panel, .resolved-bar { right: 0; }
+  .detail-panel { max-height: 75vh; }
+
+  .dp-body { flex-direction: column; overflow-y: auto; }
+  .dp-section { border-right: none; border-bottom: 1px solid var(--border); flex: none !important; }
+  .dp-section:last-child { border-bottom: none; }
+
+  .resolved-card { min-width: 150px; max-width: 190px; }
+
+  /* Slightly larger touch targets on the controls people actually tap. */
+  .share-btn, .dp-close { padding: 4px 9px; font-size: 11px; }
+  .filter-sel { padding: 7px 8px; }
+}

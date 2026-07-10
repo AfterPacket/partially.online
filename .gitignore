@@ -33,5 +33,11 @@ Thumbs.db
 .idea/
 *.swp
 
+# Claude Code local tooling metadata
+.claude/
+
+# Node (scratch tooling only -- this project has no JS dependencies)
+node_modules/
+
 # Logs
 *.log
