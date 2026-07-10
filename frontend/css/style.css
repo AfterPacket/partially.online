@@ -177,6 +177,18 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .event-list::-webkit-scrollbar { width: 4px; }
 .event-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+}
+.sidebar-footer a { color: var(--text-dim); text-decoration: none; }
+.sidebar-footer a:hover { color: var(--accent); text-decoration: underline; }
+
 /* ── Event card ──────────────────────────────────────────────── */
 .event-card {
   padding: 10px 16px;
