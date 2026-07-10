@@ -1,6 +1,7 @@
 import datetime
 import logging
 
+from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
 from sqlalchemy.orm import Session
 
 from .models import CountryBelief, OutageEvent
@@ -59,14 +60,30 @@ def _reset_belief_for_new_event(db: Session, country_code: str):
     row to update, creates a new one, and the cycle repeats. Resetting to a
     neutral 0.5 forces fresh evidence to be gathered before either
     conclusion is reached.
+
+    Uses an atomic INSERT ... ON CONFLICT DO UPDATE rather than a
+    check-then-insert (query for a row, add() if missing): a country with
+    both a country-wide and a region-scoped alert in the same batch (or
+    several region alerts at once) calls this more than once for the same
+    country_code within one upsert_events() loop, in one uncommitted
+    session. With autoflush=False (see database.py), a plain SELECT run
+    twice for the same key doesn't see the first call's still-pending add(),
+    so both conclude "no row exists" and both try to insert one — a
+    sqlite UNIQUE constraint violation that rolls back the entire batch.
+    The atomic upsert has no such window: the second call correctly sees
+    the first call's row (even uncommitted, within the same transaction)
+    and updates it instead of colliding with it. availability is
+    deliberately left out of the update clause so a reset never clobbers a
+    previously-learned response rate — it's only ever seeded on first insert.
     """
-    row = db.query(CountryBelief).filter(CountryBelief.country_code == country_code).first()
-    if row is None:
-        db.add(CountryBelief(country_code=country_code, belief_up=0.5,
-                             availability=0.9, state="uncertain"))
-    else:
-        row.belief_up = 0.5
-        row.state     = "uncertain"
+    stmt = sqlite_upsert(CountryBelief).values(
+        country_code=country_code, belief_up=0.5, availability=0.9, state="uncertain",
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[CountryBelief.country_code],
+        set_={"belief_up": 0.5, "state": "uncertain"},
+    )
+    db.execute(stmt)
 
 
 def get_country_status(db: Session) -> dict:
