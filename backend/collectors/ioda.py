@@ -2,6 +2,7 @@ import datetime
 import logging
 
 from .base import BaseCollector
+from ..config import config
 
 log = logging.getLogger(__name__)
 
@@ -13,8 +14,24 @@ class IODACollector(BaseCollector):
     name = "ioda"
 
     async def collect(self) -> list:
-        now   = datetime.datetime.utcnow()
-        since = now - datetime.timedelta(hours=24)
+        now = datetime.datetime.utcnow()
+        # IODA's alerts endpoint returns discrete point-in-time entries, not
+        # "current status" -- a country that alerted once keeps reappearing
+        # in every query whose window still covers that entry's timestamp.
+        # A fixed 24h lookback (this used to be hardcoded) meant a single
+        # alert stayed "seen" by check_resolutions() for up to 24h after it
+        # fired, even if the underlying disruption ended minutes later and
+        # IODA never emitted an explicit "back to normal" entry to supersede
+        # it (confirmed live: Mongolia showed exactly one alert entry, from
+        # hours earlier, with nothing more recent -- yet kept blocking
+        # resolution on every 15-minute poll because it was still inside the
+        # window). Scoping the window to a small multiple of how often we
+        # actually poll lets a stale entry age out and go absent -- and
+        # therefore resolve -- within roughly an hour instead of a day.
+        # Wide enough to survive a couple of missed/slow cycles, narrow
+        # enough that resolution isn't held hostage by ancient history.
+        lookback_minutes = max(60, config.COLLECTION_INTERVAL_MINUTES * 3)
+        since = now - datetime.timedelta(minutes=lookback_minutes)
         events = []
         # Query country- and region-level alerts separately (the API takes a
         # single entityType per request). Region-level matters: a state/

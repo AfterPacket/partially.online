@@ -23,6 +23,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentDetailCode) loadCountryHistory(currentDetailCode);
   });
 
+  // Event/resolved cards are built from server data as HTML strings, so
+  // they can't carry inline onclick="" attributes -- the CSP's script-src
+  // has no 'unsafe-inline', and browsers silently block inline handlers
+  // under it. Delegate from the (static, listener-attached-once) containers
+  // instead, keyed off a data-country attribute on each card.
+  document.getElementById('event-list').addEventListener('click', (e) => {
+    const card = e.target.closest('.event-card');
+    if (card && card.dataset.country) window.showCountryDetail(card.dataset.country);
+  });
+  document.getElementById('resolved-list').addEventListener('click', (e) => {
+    const card = e.target.closest('.resolved-card');
+    if (card && card.dataset.country) window.showCountryDetail(card.dataset.country);
+  });
+
   // Auto-refresh every 5 minutes
   // Auto-refresh every 60 s — lightweight API poll, backend collects on its own schedule
   refreshTimer = setInterval(loadAll, 60 * 1000);
@@ -87,7 +101,7 @@ function renderEvents() {
 
   el.innerHTML = filtered.map(ev => {
     const time = ev.start_time ? _relTime(new Date(ev.start_time)) : '';
-    return '<div class="event-card" onclick="showCountryDetail(\''+ev.country_code+'\')">'+
+    return '<div class="event-card" data-country="' + esc(ev.country_code) + '">'+
       '<div class="ec-top">'+
         '<span class="sev-pip sev-' + ev.severity + '"></span>'+
         '<span class="ec-title">' + esc(ev.title) + '</span>'+
@@ -215,7 +229,7 @@ function renderResolvedBar(events) {
       ? _duration(new Date(ev.start_time), new Date(ev.resolved_at))
       : '';
     const place = ev.region_name ? ev.region_name + ', ' + ev.country_name : ev.country_name;
-    return '<div class="resolved-card" onclick="showCountryDetail(\''+ev.country_code+'\')">'+
+    return '<div class="resolved-card" data-country="' + esc(ev.country_code) + '">'+
       '<div class="rc-country">' + esc(place) + ' (' + ev.country_code + ')</div>'+
       '<div class="rc-type">' + esc(ev.event_type) + ' &mdash; ' + ev.source.toUpperCase() + '</div>'+
       '<div class="rc-time">&#10003; Resolved ' + resolvedAgo + '</div>'+
