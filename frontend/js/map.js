@@ -280,11 +280,10 @@ function _onEachFeature(feature, layer) {
   const a2   = NUM_TO_A2[id] || null;
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
-  const name = NUM_TO_NAME[id] || a2 || 'Unknown';
-  
-  // Debug: log features without valid IDs
-  if (!feature.id || isNaN(id) || !a2) {
-    console.warn('Unknown country feature:', feature.id, 'parsed id:', id, 'a2:', a2, 'name:', name, 'properties:', feature.properties);
+  const name = NUM_TO_NAME[id] || a2 || feature.properties.name || 'Unknown';
+
+  if (name === 'Unknown') {
+    console.error('Country name is Unknown:', { featureId: feature.id, parsedId: id, alpha2: a2, propertiesName: feature.properties.name, feature: feature });
   }
 
   layer.bindTooltip(_tooltip(name, sev, info), {
