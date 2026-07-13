@@ -4,6 +4,14 @@
 // This ensures disputed territories (Somaliland, Kosovo, N. Cyprus) have names available
 const FEATURE_NAMES = {};
 
+// Disputed territories in the TopoJSON lack ISO codes, so we map them
+// to their parent/recognised country code for detail-panel lookups.
+const DISPUTED_TO_PARENT = {
+  'Somaliland': 'SO',   // -> Somalia
+  'N. Cyprus':  'CY',   // -> Cyprus
+  'Kosovo':     'RS',   // -> Serbia (most widely recognised parent)
+};
+
 // Complete ISO 3166-1 numeric -> alpha-2 mapping for world-atlas topojson IDs
 const NUM_TO_A2 = {
   4:'AF',8:'AL',10:'AQ',12:'DZ',20:'AD',24:'AO',28:'AG',31:'AZ',32:'AR',36:'AU',
@@ -326,7 +334,7 @@ function _onEachFeature(feature, layer) {
       e.target.bringToFront();
     },
     mouseout(e)  { geoLayer.resetStyle(e.target); },
-    click()      { if (a2) window.showCountryDetail(a2); },
+    click()      { window.showCountryDetail(a2 || DISPUTED_TO_PARENT[name] || null); },
   });
 }
 
