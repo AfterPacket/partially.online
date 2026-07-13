@@ -276,7 +276,7 @@ function _styleFeature(feature) {
 }
 
 function _onEachFeature(feature, layer) {
-  const id   = parseInt(feature.id);
+  const id   = feature.id != null ? parseInt(feature.id, 10) : NaN;
   const a2   = NUM_TO_A2[id] || null;
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
@@ -284,7 +284,7 @@ function _onEachFeature(feature, layer) {
   
   // Debug: log features without valid IDs
   if (!feature.id || isNaN(id) || !a2) {
-    console.warn('Unknown country feature:', feature.id, 'id type:', typeof feature.id, 'a2:', a2, 'name:', name);
+    console.warn('Unknown country feature:', feature.id, 'parsed id:', id, 'a2:', a2, 'name:', name, 'properties:', feature.properties);
   }
 
   layer.bindTooltip(_tooltip(name, sev, info), {
