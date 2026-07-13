@@ -281,17 +281,20 @@ function _onEachFeature(feature, layer) {
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
   
-  // Get name: unconditionally use properties.name first (handles disputed territories)
-  const propName = feature.properties?.name;
-  let name = propName || 'Unknown';
+  // Get name: try layer.feature.properties.name FIRST (more reliable for disputed territories)
+  // then fall back to feature.properties.name, then lookup tables
+  const layerName = layer.feature && layer.feature.properties ? layer.feature.properties.name : null;
+  const propName = feature.properties && feature.properties.name ? feature.properties.name : null;
   
-  // Only use lookup tables if properties.name didn't provide a name
-  if (name === 'Unknown') {
-    if (NUM_TO_NAME[id]) {
-      name = NUM_TO_NAME[id];
-    } else if (a2) {
-      name = a2;
-    }
+  let name = 'Unknown';
+  if (layerName) {
+    name = layerName;
+  } else if (propName) {
+    name = propName;
+  } else if (NUM_TO_NAME[id]) {
+    name = NUM_TO_NAME[id];
+  } else if (a2) {
+    name = a2;
   }
 
   layer.bindTooltip(_tooltip(name, sev, info), {
