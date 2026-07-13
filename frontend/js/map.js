@@ -280,7 +280,8 @@ function _onEachFeature(feature, layer) {
   const a2   = NUM_TO_A2[id] || null;
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
-  const name = feature.properties.name || NUM_TO_NAME[id] || a2 || 'Unknown';
+  const propName = feature.properties && feature.properties.name ? feature.properties.name : null;
+  const name = propName || NUM_TO_NAME[id] || a2 || 'Unknown';
 
   layer.bindTooltip(_tooltip(name, sev, info), {
     sticky: true, className: '', opacity: 1,
