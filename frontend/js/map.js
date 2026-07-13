@@ -155,10 +155,10 @@ function _addEventMarkers(statusList) {
       className:   'event-pulse-marker',
     });
     marker.bindTooltip(
-      '<div class="map-tooltip"><div class="tt-name">' + c.name +
-      ' (' + c.code + ')</div><div class="tt-sev sev-' + c.status + '">' +
-      c.status.charAt(0).toUpperCase() + c.status.slice(1) +
-      ' &mdash; ' + c.active_events + ' event(s)</div></div>',
+      '<div class="map-tooltip"><div class="tt-name">' + esc(c.name) +
+      ' (' + esc(c.code) + ')</div><div class="tt-sev sev-' + safeClass(c.status) + '">' +
+      esc(c.status.charAt(0).toUpperCase() + c.status.slice(1)) +
+      ' &mdash; ' + esc(String(c.active_events)) + ' event(s)</div></div>',
       { sticky: true, className: '', opacity: 1 }
     );
     marker.on('click', () => window.showCountryDetail(c.code));
@@ -317,11 +317,11 @@ window.focusCountry = focusCountry;
 
 function _tooltip(name, sev, info) {
   const sevLabel = sev === 'nodata' ? 'No data'
-    : sev.charAt(0).toUpperCase() + sev.slice(1)
-      + (info ? ' — ' + info.active_events + ' event(s)' : '');
+    : esc(sev.charAt(0).toUpperCase() + sev.slice(1))
+      + (info ? ' — ' + esc(String(info.active_events)) + ' event(s)' : '');
   return '<div class="map-tooltip">'
-    + '<div class="tt-name">' + name + '</div>'
-    + '<div class="tt-sev sev-' + (sev === 'nodata' ? 'normal' : sev) + '">' + sevLabel + '</div>'
+    + '<div class="tt-name">' + esc(name) + '</div>'
+    + '<div class="tt-sev sev-' + safeClass(sev === 'nodata' ? 'normal' : sev) + '">' + sevLabel + '</div>'
     + '</div>';
 }
 

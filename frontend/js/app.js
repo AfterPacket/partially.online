@@ -36,10 +36,10 @@ async function loadBanners() {
       const url = href.startsWith('http') ? href : '';
       return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text) + '</a>' : esc(text);
     });
-    return '<div class="banner banner-level-' + esc(b.level) + '" data-banner-id="' + b.id + '"' +
+    return '<div class="banner banner-level-' + safeClass(b.level) + '" data-banner-id="' + b.id + '"' +
       '><span class="banner-icon"' + '>' + icon + '</span>' +
       '<div class="banner-body"' + '>' + safe + '</div>' +
-      '<button class="banner-close" data-banner-id="' + b.id + '">&times;</button>' +
+      '<button class="banner-close" data-banner-id="' + esc(String(b.id)) + '">&times;</button>' +
       '</div>';
   }).join('');
 }
@@ -164,14 +164,14 @@ function renderEvents() {
     const time = ev.start_time ? _relTime(new Date(ev.start_time)) : '';
     return '<div class="event-card" data-country="' + esc(ev.country_code) + '">'+
       '<div class="ec-top">'+
-        '<span class="sev-pip sev-' + ev.severity + '"></span>'+
+        '<span class="sev-pip sev-' + safeClass(ev.severity) + '"></span>'+
         '<span class="ec-title">' + esc(ev.title) + '</span>'+
       '</div>'+
       '<div class="ec-meta">'+
         '<span class="type-tag">' + esc(ev.event_type) + '</span>'+
         (ev.region_name ? '<span class="region-tag">' + esc(ev.region_name) + '</span>' : '')+
         '<span>' + esc(ev.country_name) + '</span>'+
-        '<span class="source-tag">' + ev.source.toUpperCase() + '</span>'+
+        '<span class="source-tag">' + esc(ev.source.toUpperCase()) + '</span>'+
         (ev.probe_confirmed ? '<span class="probe-tag">&#10003; confirmed</span>' : '')+
         '<span style="margin-left:auto">' + time + '</span>'+
         _shareBtnHTML(ev)+
@@ -203,7 +203,7 @@ window.showCountryDetail = async function(code) {
 
   const badge = document.getElementById('dp-badge');
   badge.textContent  = data.status.charAt(0).toUpperCase() + data.status.slice(1);
-  badge.className    = 'sev-badge sev-' + data.status;
+  badge.className    = 'sev-badge sev-' + safeClass(data.status);
 
   currentDetailShare = {
     title: 'Internet status for ' + data.name,
@@ -226,7 +226,7 @@ window.showCountryDetail = async function(code) {
           '<span class="type-tag">' + esc(ev.event_type) + '</span>'+
           (ev.region_name ? '<span class="region-tag">' + esc(ev.region_name) + '</span>' : '')+
           (ev.probe_confirmed ? '<span class="probe-tag">&#10003; probe confirmed</span>' : '<span class="probe-tag probe-unconfirmed">probe pending</span>')+
-          (ev.source_url ? '<a class="dev-link" href="'+esc(ev.source_url)+'" target="_blank" rel="noopener">View source &rarr;</a>' : '')+
+          (ev.source_url && ev.source_url.startsWith('http') ? '<a class="dev-link" href="'+esc(ev.source_url)+'" target="_blank" rel="noopener">View source &rarr;</a>' : '')+
         '</div>'+
       '</div>'
     ).join('');
@@ -399,8 +399,8 @@ function renderResolvedBar(events) {
       : '';
     const place = ev.region_name ? ev.region_name + ', ' + ev.country_name : ev.country_name;
     return '<div class="resolved-card" data-country="' + esc(ev.country_code) + '">'+
-      '<div class="rc-country">' + esc(place) + ' (' + ev.country_code + ')</div>'+
-      '<div class="rc-type">' + esc(ev.event_type) + ' &mdash; ' + ev.source.toUpperCase() + '</div>'+
+      '<div class="rc-country">' + esc(place) + ' (' + esc(ev.country_code) + ')</div>'+
+      '<div class="rc-type">' + esc(ev.event_type) + ' &mdash; ' + esc(ev.source.toUpperCase()) + '</div>'+
       '<div class="rc-time">&#10003; Resolved ' + resolvedAgo + '</div>'+
       (duration ? '<div class="rc-duration">Duration: ' + duration + '</div>' : '')+
       _shareBtnHTML(ev)+
@@ -435,6 +435,11 @@ function esc(s) {
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
+}
+
+/** Strip anything that isn't a letter, digit, or hyphen — safe for CSS class names. */
+function safeClass(s) {
+  return String(s || '').replace(/[^a-zA-Z0-9-]/g, '');
 }
 
 function _relTime(date) {

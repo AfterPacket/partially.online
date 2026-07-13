@@ -265,7 +265,8 @@ async def api_admin_probe():
 
 # ── Admin banner management (require X-Admin-Key header) ─────────────────────
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+import re
 
 
 class BannerCreate(BaseModel):
@@ -273,11 +274,25 @@ class BannerCreate(BaseModel):
     level: str   = Field("info", pattern=r"^(info|warning|success)$")
     active: bool  = True
 
+    @field_validator('message')
+    @classmethod
+    def sanitize_message(cls, v: str) -> str:
+        # Strip HTML tags — only plain text and [text](url) links are allowed.
+        # The frontend renders [text](url) as safe <a> tags.
+        return re.sub(r'<[^>]+>', '', v)
+
 
 class BannerUpdate(BaseModel):
     message: str | None = Field(None, min_length=1, max_length=1000)
     level: str   | None = Field(None, pattern=r"^(info|warning|success)$")
     active: bool | None = None
+
+    @field_validator('message')
+    @classmethod
+    def sanitize_message(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return re.sub(r'<[^>]+>', '', v)
 
 
 @app.get("/api/admin/banners", dependencies=[Depends(require_admin)])
