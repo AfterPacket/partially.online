@@ -1,5 +1,9 @@
 'use strict';
 
+// Global map to store feature names captured BEFORE Leaflet processes them
+// This ensures disputed territories (Somaliland, Kosovo, N. Cyprus) have names available
+const FEATURE_NAMES = {};
+
 // Complete ISO 3166-1 numeric -> alpha-2 mapping for world-atlas topojson IDs
 const NUM_TO_A2 = {
   4:'AF',8:'AL',10:'AQ',12:'DZ',20:'AD',24:'AO',28:'AG',31:'AZ',32:'AR',36:'AU',
@@ -248,6 +252,17 @@ async function _loadCountriesGeo() {
     const resp = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
     const topo = await resp.json();
     const geo  = topojson.feature(topo, topo.objects.countries);
+    
+    // Pre-process: capture ALL feature names BEFORE Leaflet processes them
+    // Store directly on feature object to ensure disputed territories have names
+    geo.features.forEach((f, idx) => {
+      const name = f.properties && f.properties.name ? f.properties.name : null;
+      if (name) {
+        // Store on feature object directly - this is preserved through Leaflet processing
+        f._displayName = name;
+      }
+    });
+    
     _fixAntimeridian(geo);   // fix Russia / Alaska / Fiji crossing the 180-degree line
     geoLayer = L.geoJSON(geo, {
       style:         _styleFeature,
@@ -281,13 +296,16 @@ function _onEachFeature(feature, layer) {
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
   
-  // Get name: try layer.feature.properties.name FIRST (more reliable for disputed territories)
-  // then fall back to feature.properties.name, then lookup tables
+  // Get name: try _displayName FIRST (pre-stored before Leaflet processing)
+  // then layer.feature.properties.name, then feature.properties.name, then lookup tables
+  const displayName = feature._displayName || (layer.feature && layer.feature._displayName) || null;
   const layerName = layer.feature && layer.feature.properties ? layer.feature.properties.name : null;
   const propName = feature.properties && feature.properties.name ? feature.properties.name : null;
   
   let name = 'Unknown';
-  if (layerName) {
+  if (displayName) {
+    name = displayName;
+  } else if (layerName) {
     name = layerName;
   } else if (propName) {
     name = propName;
