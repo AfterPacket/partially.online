@@ -280,8 +280,16 @@ function _onEachFeature(feature, layer) {
   const a2   = NUM_TO_A2[id] || null;
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
-  const propName = feature.properties && feature.properties.name ? feature.properties.name : null;
-  const name = propName || NUM_TO_NAME[id] || a2 || 'Unknown';
+  
+  // Get name: prioritize properties.name for disputed territories (Somaliland, Kosovo, N. Cyprus)
+  let name = 'Unknown';
+  if (feature.properties && feature.properties.name) {
+    name = feature.properties.name;
+  } else if (NUM_TO_NAME[id]) {
+    name = NUM_TO_NAME[id];
+  } else if (a2) {
+    name = a2;
+  }
 
   layer.bindTooltip(_tooltip(name, sev, info), {
     sticky: true, className: '', opacity: 1,
