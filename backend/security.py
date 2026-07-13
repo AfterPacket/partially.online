@@ -9,6 +9,7 @@ Principles applied
 4. Audit trail           – all admin attempts logged with source IP
 """
 
+import hmac
 import time
 import logging
 from collections import defaultdict
@@ -32,9 +33,10 @@ async def require_admin(
 ) -> str:
     """Dependency: raises 403 unless a valid X-Admin-Key header is present."""
     if not config.ADMIN_API_KEY:
-        raise HTTPException(503, "Admin access not configured — set ADMIN_API_KEY in .env")
+        log.error("[security] Admin endpoint hit but ADMIN_API_KEY not configured")
+        raise HTTPException(403, "Invalid or missing X-Admin-Key header")
     ip = _client_ip(request)
-    if not key or key != config.ADMIN_API_KEY:
+    if not key or not hmac.compare_digest(key, config.ADMIN_API_KEY):
         log.warning(f"[security] Unauthorized admin attempt from {ip}")
         raise HTTPException(403, "Invalid or missing X-Admin-Key header")
     log.info(f"[security] Admin action authorized from {ip}")
@@ -69,9 +71,15 @@ async def rate_limit(request: Request) -> None:
 
 
 def _client_ip(request: Request) -> str:
+    # When behind a reverse proxy (nginx), X-Forwarded-For is set by the
+    # proxy. The rightmost entry is the one added by the proxy we control.
+    # The leftmost entries can be spoofed by the client, so we use the
+    # rightmost entry (closest to our proxy) when we have more than one hop.
+    # When running without a proxy, request.client.host is authoritative.
     fwd = request.headers.get("X-Forwarded-For")
     if fwd:
-        return fwd.split(",")[0].strip()
+        # Take the last entry — set by the trusted proxy directly in front of us
+        return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -84,6 +92,7 @@ _CSP = (
     "img-src 'self' data: https://*.basemaps.cartocdn.com; "
     "connect-src 'self' https://cdn.jsdelivr.net; "         # world-atlas fetch
     "font-src 'self'; "
+    "object-src 'none'; "
     "frame-ancestors 'none'; "
     "base-uri 'self'; "
     "form-action 'self'"

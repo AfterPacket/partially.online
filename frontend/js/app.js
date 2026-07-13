@@ -96,7 +96,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // so a shared link actually lands on the relevant place, not just the
   // homepage.
   const deepLinkCountry = new URLSearchParams(location.search).get('country');
-  if (deepLinkCountry) window.showCountryDetail(deepLinkCountry.toUpperCase());
+  if (deepLinkCountry && /^[a-zA-Z]{2,3}$/.test(deepLinkCountry))
+    window.showCountryDetail(deepLinkCountry.toUpperCase());
 
   // Auto-refresh every 5 minutes
   // Auto-refresh every 60 s — lightweight API poll, backend collects on its own schedule
@@ -192,6 +193,8 @@ function _shareBtnHTML(ev) {
 
 // ── Country detail panel ──────────────────────────────────────────────────────
 window.showCountryDetail = async function(code) {
+  // Validate country code to prevent path traversal
+  if (!/^[a-zA-Z]{2,3}$/.test(code)) return;
   if (window.focusCountry) window.focusCountry(code);
   currentDetailCode = code;
 

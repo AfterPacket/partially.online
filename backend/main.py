@@ -76,7 +76,6 @@ def _e(ev: OutageEvent) -> dict:
         "end_time":        (ev.end_time.isoformat()   + "Z") if ev.end_time   else None,
         "is_active":       ev.is_active,
         "probe_confirmed": bool(ev.probe_confirmed),
-        "probe_note":      ev.probe_note or "",
         "resolved":        bool(ev.resolved),
         "resolved_at":     (ev.resolved_at.isoformat() + "Z") if ev.resolved_at else None,
     }
@@ -111,7 +110,7 @@ def api_status(db: Session = Depends(get_db)):
 @app.get("/api/events", dependencies=[Depends(rate_limit)])
 def api_events(
     limit:       int  = Query(50, le=200),
-    offset:      int  = Query(0),
+    offset:      int  = Query(0, ge=0),
     severity:    str  = None,
     country:     str  = None,
     active_only: bool = True,

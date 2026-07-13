@@ -236,9 +236,9 @@ def check_resolutions(db: Session, seen_keys: set):
     The 30-minute grace prevents a single missed API cycle from falsely
     resolving an ongoing event.
     """
-    grace   = datetime.datetime.utcnow() - datetime.timedelta(minutes=30)
-    cutoff  = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
     now     = datetime.datetime.utcnow()
+    grace   = now - datetime.timedelta(minutes=30)
+    cutoff  = now - datetime.timedelta(hours=24)
 
     stale_active = (
         db.query(OutageEvent)
