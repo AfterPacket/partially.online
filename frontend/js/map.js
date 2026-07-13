@@ -383,7 +383,9 @@ function updateMapColors(statusList) {
       color:       'rgba(20,50,80,0.55)',
       weight:      0.5,
     });
-    const name = NUM_TO_NAME[id] || a2 || 'Unknown';
+    const name = layer.feature._displayName
+      || (layer.feature.properties && layer.feature.properties.name)
+      || NUM_TO_NAME[id] || a2 || 'Unknown';
     layer.setTooltipContent(_tooltip(name, sev, info));
   });
 }
