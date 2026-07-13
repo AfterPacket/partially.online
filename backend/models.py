@@ -49,6 +49,24 @@ class AlertSent(Base):
     message  = Column(Text)
 
 
+class Banner(Base):
+    """
+    Dismissible site-wide banner notices.
+    Shown to all visitors until they close them (tracked via cookie by the
+    banner id). Only active banners are served to the public API; admin
+    endpoints manage CRUD.
+    """
+    __tablename__ = "banners"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    message    = Column(Text, nullable=False)       # plain-text or minimal markdown
+    level      = Column(String(20), default="info")  # info | warning | success
+    active     = Column(Boolean,  default=True)       # only active banners are shown
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                           onupdate=datetime.datetime.utcnow)
+
+
 class CountryBelief(Base):
     """
     Persistent Trinocular belief state per country (see collectors/trinocular.py).

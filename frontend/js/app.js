@@ -8,12 +8,61 @@ let refreshTimer = null;
 let currentDetailCode = null;
 let currentDetailShare = null;
 
+// ── Banners ────────────────────────────────────────────────────────────────────
+const BANNER_ICONS = { info: 'ℹ', warning: '⚠', success: '✓' };
+
+function _dismissedBannerIds() {
+  try { return JSON.parse(localStorage.getItem('dismissed_banners') || '[]'); }
+  catch { return []; }
+}
+
+function _dismissBannerId(id) {
+  const ids = _dismissedBannerIds();
+  if (!ids.includes(id)) { ids.push(id); localStorage.setItem('dismissed_banners', JSON.stringify(ids)); }
+}
+
+async function loadBanners() {
+  const data = await apiFetch('/api/banners');
+  if (!data || !data.banners) return;
+  const dismissed = _dismissedBannerIds();
+  const stack = document.getElementById('banner-stack');
+  // Only render banners the user hasn't dismissed
+  const visible = data.banners.filter(b => !dismissed.includes(b.id));
+  stack.innerHTML = visible.map(b => {
+    const icon = BANNER_ICONS[b.level] || BANNER_ICONS.info;
+    // Build message safely — only allow links, escape everything else
+    const safe = esc(b.message).replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
+      // Only allow http/https links
+      const url = href.startsWith('http') ? href : '';
+      return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text) + '</a>' : esc(text);
+    });
+    return '<div class="banner banner-level-' + esc(b.level) + '" data-banner-id="' + b.id + '"' +
+      '><span class="banner-icon"' + '>' + icon + '</span>' +
+      '<div class="banner-body"' + '>' + safe + '</div>' +
+      '<button class="banner-close" data-banner-id="' + b.id + '">&times;</button>' +
+      '</div>';
+  }).join('');
+}
+
+function _setupBanners() {
+  document.getElementById('banner-stack').addEventListener('click', (e) => {
+    const btn = e.target.closest('.banner-close');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.bannerId, 10);
+    _dismissBannerId(id);
+    const row = btn.closest('.banner');
+    if (row) row.remove();
+  });
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initMap();
   loadAll();
+  loadBanners();
   _setupResolvedBar();
   _setupShareMenu();
+  _setupBanners();
 
   document.getElementById('dp-close').addEventListener('click', closeDetail);
   document.getElementById('filter-sev').addEventListener('change', renderEvents);

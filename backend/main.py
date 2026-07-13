@@ -4,7 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .analyzer import get_country_status
 from .config import config
 from .database import get_db, init_db
-from .models import OutageEvent
+from .models import Banner, OutageEvent
 from .scheduler import run_api_collection, run_probe_collection, start_scheduler, stop_scheduler
 from .security import SecurityHeadersMiddleware, rate_limit, require_admin
 
@@ -49,7 +49,7 @@ _origins = [o.strip() for o in config.ALLOWED_ORIGINS.split(",")]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_methods=["GET"],           # public API is read-only
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
     max_age=600,
 )
@@ -215,6 +215,30 @@ def api_events_resolved(
     return {"events": [_e(r) for r in rows], "total": len(rows)}
 
 
+# ── Public banners ─────────────────────────────────────────────────────────────
+
+@app.get("/api/banners", dependencies=[Depends(rate_limit)])
+def api_banners(db: Session = Depends(get_db)):
+    """Active banner notices shown to all visitors."""
+    rows = (
+        db.query(Banner)
+        .filter(Banner.active.is_(True))
+        .order_by(Banner.created_at.desc())
+        .all()
+    )
+    return {"banners": [_b(r) for r in rows]}
+
+
+def _b(banner: Banner) -> dict:
+    return {
+        "id":        banner.id,
+        "message":   banner.message,
+        "level":     banner.level,
+        "active":    bool(banner.active),
+        "created_at": (banner.created_at.isoformat() + "Z") if banner.created_at else None,
+    }
+
+
 # ── Admin endpoints (require X-Admin-Key header, see security.require_admin) ──
 
 @app.post("/api/admin/refresh", dependencies=[Depends(require_admin)])
@@ -237,6 +261,68 @@ async def api_admin_probe():
     """
     asyncio.create_task(run_probe_collection())
     return {"status": "ok", "message": "Probe cycle triggered"}
+
+
+# ── Admin banner management (require X-Admin-Key header) ─────────────────────
+
+from pydantic import BaseModel, Field
+
+
+class BannerCreate(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    level: str   = Field("info", pattern=r"^(info|warning|success)$")
+    active: bool  = True
+
+
+class BannerUpdate(BaseModel):
+    message: str | None = Field(None, min_length=1, max_length=1000)
+    level: str   | None = Field(None, pattern=r"^(info|warning|success)$")
+    active: bool | None = None
+
+
+@app.get("/api/admin/banners", dependencies=[Depends(require_admin)])
+def api_admin_banners(db: Session = Depends(get_db)):
+    """List all banners (active and inactive)."""
+    rows = db.query(Banner).order_by(Banner.created_at.desc()).all()
+    return {"banners": [_b(r) for r in rows]}
+
+
+@app.post("/api/admin/banners", dependencies=[Depends(require_admin)])
+def api_admin_banner_create(body: BannerCreate, db: Session = Depends(get_db)):
+    """Create a new banner notice."""
+    banner = Banner(message=body.message, level=body.level, active=body.active)
+    db.add(banner)
+    db.commit()
+    db.refresh(banner)
+    return _b(banner)
+
+
+@app.patch("/api/admin/banners/{banner_id}", dependencies=[Depends(require_admin)])
+def api_admin_banner_update(banner_id: int, body: BannerUpdate, db: Session = Depends(get_db)):
+    """Update a banner (change message, level, or active status)."""
+    banner = db.query(Banner).filter(Banner.id == banner_id).first()
+    if not banner:
+        raise HTTPException(404, "Banner not found")
+    if body.message is not None:
+        banner.message = body.message
+    if body.level is not None:
+        banner.level = body.level
+    if body.active is not None:
+        banner.active = body.active
+    db.commit()
+    db.refresh(banner)
+    return _b(banner)
+
+
+@app.delete("/api/admin/banners/{banner_id}", dependencies=[Depends(require_admin)])
+def api_admin_banner_delete(banner_id: int, db: Session = Depends(get_db)):
+    """Delete a banner."""
+    banner = db.query(Banner).filter(Banner.id == banner_id).first()
+    if not banner:
+        raise HTTPException(404, "Banner not found")
+    db.delete(banner)
+    db.commit()
+    return {"status": "ok"}
 
 
 # ── Static frontend ───────────────────────────────────────────────────────────
