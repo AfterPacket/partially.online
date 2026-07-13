@@ -10,7 +10,7 @@ NAMES = {
     "AM":"Armenia","AU":"Australia","AT":"Austria","AZ":"Azerbaijan","BH":"Bahrain",
     "BD":"Bangladesh","BY":"Belarus","BE":"Belgium","BJ":"Benin","BT":"Bhutan",
     "BO":"Bolivia","BA":"Bosnia and Herzegovina","BW":"Botswana","BR":"Brazil",
-    "BN":"Brunei","BG":"Bulgaria","MM":"Myanmar","BI":"Burundi","KH":"Cambodia",
+    "BF":"Burkina Faso","BN":"Brunei","BG":"Bulgaria","MM":"Myanmar","BI":"Burundi","KH":"Cambodia",
     "CM":"Cameroon","CA":"Canada","CF":"Central African Republic","TD":"Chad",
     "CL":"Chile","CN":"China","CO":"Colombia","CD":"DR Congo","CG":"Congo",
     "CR":"Costa Rica","HR":"Croatia","CU":"Cuba","CY":"Cyprus","CZ":"Czech Republic",

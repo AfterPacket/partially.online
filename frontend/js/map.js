@@ -22,7 +22,7 @@ const NUM_TO_A2 = {
   728:'SS',729:'SD',740:'SR',748:'SZ',752:'SE',756:'CH',760:'SY',762:'TJ',
   764:'TH',768:'TG',776:'TO',780:'TT',784:'AE',788:'TN',792:'TR',795:'TM',
   800:'UG',804:'UA',818:'EG',826:'GB',834:'TZ',840:'US',858:'UY',860:'UZ',
-  862:'VE',704:'VN',887:'YE',894:'ZM',104:'MM',380:'IT',528:'NL',756:'CH',
+  854:'BF',862:'VE',704:'VN',887:'YE',894:'ZM',
 };
 
 // Numeric -> display name (so tooltips show real names, not just codes)
@@ -31,7 +31,7 @@ const NUM_TO_NAME = {
   28:'Antigua & Barbuda',31:'Azerbaijan',32:'Argentina',36:'Australia',
   40:'Austria',44:'Bahamas',48:'Bahrain',50:'Bangladesh',51:'Armenia',
   56:'Belgium',64:'Bhutan',68:'Bolivia',70:'Bosnia & Herzegovina',
-  72:'Botswana',76:'Brazil',84:'Belize',90:'Solomon Islands',96:'Brunei',
+  72:'Botswana',76:'Brazil',84:'Belize',854:'Burkina Faso',90:'Solomon Islands',96:'Brunei',
   100:'Bulgaria',104:'Myanmar',108:'Burundi',116:'Cambodia',120:'Cameroon',
   124:'Canada',132:'Cape Verde',140:'Central African Republic',144:'Sri Lanka',
   152:'Chile',156:'China',170:'Colombia',174:'Comoros',178:'Rep. of Congo',
@@ -89,7 +89,7 @@ const CC_LAT_LNG = {
   'AR':[-38.4,-63.6],'AM':[40.1,45.0],'AU':[-25.3,133.8],'AT':[47.5,14.6],
   'AZ':[40.1,47.6],'BH':[26.0,50.6],'BD':[23.7,90.4],'BY':[53.7,27.9],
   'BE':[50.5,4.5],'BT':[27.5,90.4],'BO':[-16.3,-63.6],'BA':[44.2,17.9],
-  'BW':[-22.3,24.7],'BR':[-14.2,-51.9],'BG':[42.7,25.5],'MM':[17.1,96.0],
+  'BW':[-22.3,24.7],'BF':[12.2,-1.6],'BR':[-14.2,-51.9],'BG':[42.7,25.5],'MM':[17.1,96.0],
   'BI':[-3.4,29.9],'KH':[12.6,104.9],'CM':[3.9,11.5],'CA':[56.1,-106.3],
   'CF':[6.6,20.9],'TD':[15.5,18.7],'CL':[-35.7,-71.5],'CN':[35.9,104.2],
   'CO':[4.1,-72.9],'KM':[-11.8,43.3],'CG':[-0.2,15.8],'CD':[-4.0,21.8],
