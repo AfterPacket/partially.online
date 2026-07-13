@@ -2,6 +2,7 @@ import datetime
 import logging
 
 from .base import BaseCollector
+from .ooni import NAMES as SHORT_NAMES
 from ..config import config
 
 log = logging.getLogger(__name__)
@@ -46,10 +47,11 @@ class CloudflareRadarCollector(BaseCollector):
             for loc in ann.get("locations", []):
                 cc   = loc.get("code", "").upper()
                 name = loc.get("name", cc)
+                short = SHORT_NAMES.get(cc)
                 events.append({
                     "country_code":   cc,
                     "country_name":   name,
-                    "title":          ann.get("title", f"Internet outage in {name}"),
+                    "title":          ann.get("title") or f"Internet outage in {short or name}",
                     "description":    ann.get("description", ""),
                     "event_type":     etype,
                     "severity":       sev,

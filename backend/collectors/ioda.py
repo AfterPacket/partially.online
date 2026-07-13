@@ -2,6 +2,7 @@ import datetime
 import logging
 
 from .base import BaseCollector
+from .ooni import NAMES as SHORT_NAMES
 from ..config import config
 
 log = logging.getLogger(__name__)
@@ -77,12 +78,14 @@ class IODACollector(BaseCollector):
             cc          = attrs.get("country_code", "").upper()
             country_nm  = attrs.get("country_name", cc)
             region_name = entity.get("name", "")
-            location    = f"{region_name}, {country_nm}"
+            short       = SHORT_NAMES.get(cc)
+            location    = f"{region_name}, {short or country_nm}"
         else:
             cc          = entity.get("code", "").upper()
             country_nm  = entity.get("name", cc)
             region_name = None
-            location    = country_nm
+            short       = SHORT_NAMES.get(cc)
+            location    = short or country_nm
 
         if not cc:
             return None
@@ -95,7 +98,7 @@ class IODACollector(BaseCollector):
 
         return {
             "country_code":   cc,
-            "country_name":   country_nm,
+            "country_name":   short or country_nm,
             "region_name":    region_name,
             "title":          f"Internet disruption detected in {location}",
             "description":    (
