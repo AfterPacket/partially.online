@@ -281,20 +281,17 @@ function _onEachFeature(feature, layer) {
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
   
-  // Get name: prioritize properties.name for disputed territories (Somaliland, Kosovo, N. Cyprus)
-  let name = 'Unknown';
-  if (feature.properties && feature.properties.name) {
-    name = feature.properties.name;
-  } else if (NUM_TO_NAME[id]) {
-    name = NUM_TO_NAME[id];
-  } else if (a2) {
-    name = a2;
-  }
+  // Get name: unconditionally use properties.name first (handles disputed territories)
+  const propName = feature.properties?.name;
+  let name = propName || 'Unknown';
   
-  // Final fallback: if still Unknown but feature has properties.name, use it
-  // This handles disputed territories that topojson-client processes differently
-  if (name === 'Unknown' && feature.properties && feature.properties.name) {
-    name = feature.properties.name;
+  // Only use lookup tables if properties.name didn't provide a name
+  if (name === 'Unknown') {
+    if (NUM_TO_NAME[id]) {
+      name = NUM_TO_NAME[id];
+    } else if (a2) {
+      name = a2;
+    }
   }
 
   layer.bindTooltip(_tooltip(name, sev, info), {
