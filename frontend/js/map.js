@@ -281,6 +281,11 @@ function _onEachFeature(feature, layer) {
   const info = a2 ? countryStatus[a2] : null;
   const sev  = info ? info.status : 'nodata';
   const name = NUM_TO_NAME[id] || a2 || 'Unknown';
+  
+  // Debug: log features without valid IDs
+  if (!feature.id || isNaN(id) || !a2) {
+    console.warn('Unknown country feature:', feature.id, 'id type:', typeof feature.id, 'a2:', a2, 'name:', name);
+  }
 
   layer.bindTooltip(_tooltip(name, sev, info), {
     sticky: true, className: '', opacity: 1,
