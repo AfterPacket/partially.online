@@ -112,10 +112,22 @@ def get_country_status(db: Session) -> dict:
 
 def expire_old_events(db: Session):
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=48)
-    db.query(OutageEvent).filter(
-        OutageEvent.is_active.is_(True),
-        OutageEvent.start_time < cutoff,
-    ).update({"is_active": False, "end_time": cutoff})
+    # Expired events: set end_time to updated_at (last time the source
+    # confirmed the outage was still active) rather than the cutoff time,
+    # since the outage actually ended before the 48h cutoff was reached.
+    events = (
+        db.query(OutageEvent)
+        .filter(
+            OutageEvent.is_active.is_(True),
+            OutageEvent.start_time < cutoff,
+        )
+        .all()
+    )
+    for ev in events:
+        ev.is_active = False
+        ev.resolved = True
+        ev.resolved_at = datetime.datetime.utcnow()
+        ev.end_time = ev.updated_at or ev.start_time
     db.commit()
 
 
@@ -175,7 +187,10 @@ def confirm_events_with_probe(db: Session, probe_results: dict):
             ev.is_active       = False
             ev.resolved        = True
             ev.resolved_at     = now
-            ev.end_time        = now
+            # Use updated_at (last time the source confirmed the outage was
+            # still active) as a better estimate of when the outage actually
+            # ended, rather than the arbitrary time this probe cycle ran.
+            ev.end_time        = ev.updated_at or ev.start_time
             ev.probe_confirmed = False
             ev.probe_note      = result.get("note", "")
             resolved += 1
@@ -242,7 +257,10 @@ def check_resolutions(db: Session, seen_keys: set):
             ev.is_active   = False
             ev.resolved    = True
             ev.resolved_at = now
-            ev.end_time    = now
+            # Use updated_at (last time the source confirmed the outage was
+            # still active) as a better estimate of when the outage actually
+            # ended, rather than the arbitrary time this interval cycle ran.
+            ev.end_time    = ev.updated_at or ev.start_time
             resolved_count += 1
 
     if resolved_count:

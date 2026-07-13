@@ -219,7 +219,7 @@ async function loadCountryHistory(code) {
     const values = (ev.actual_value != null && ev.baseline_value != null)
       ? Math.round(ev.actual_value) + ' vs ' + Math.round(ev.baseline_value)
       : '';
-    const end       = ev.resolved_at ? new Date(ev.resolved_at) : new Date();
+    const end       = ev.end_time ? new Date(ev.end_time) : (ev.resolved_at ? new Date(ev.resolved_at) : new Date());
     const dur       = ev.start_time ? _duration(new Date(ev.start_time), end) : '';
     const stateText = ev.is_active ? 'Active' : 'Resolved';
     const stateCls  = ev.is_active ? 'is-active' : 'is-resolved';
@@ -343,7 +343,9 @@ function renderResolvedBar(events) {
 
   list.innerHTML = events.map(ev => {
     const resolvedAgo = ev.resolved_at ? _relTime(new Date(ev.resolved_at)) : '';
-    const duration    = (ev.start_time && ev.resolved_at)
+    const duration    = (ev.start_time && ev.end_time)
+      ? _duration(new Date(ev.start_time), new Date(ev.end_time))
+      : (ev.start_time && ev.resolved_at)
       ? _duration(new Date(ev.start_time), new Date(ev.resolved_at))
       : '';
     const place = ev.region_name ? ev.region_name + ', ' + ev.country_name : ev.country_name;

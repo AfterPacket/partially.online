@@ -1,4 +1,3 @@
-import datetime
 import logging
 
 import httpx
@@ -28,7 +27,7 @@ async def _send_discord(event: OutageEvent):
                 {"name": "Detected", "value": event.start_time.strftime("%Y-%m-%d %H:%M UTC"), "inline": True},
             ],
             "url":       event.source_url or "",
-            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "timestamp": event.start_time.isoformat(),
         }]
     }
     try:
