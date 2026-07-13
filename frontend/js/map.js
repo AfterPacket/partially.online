@@ -290,6 +290,12 @@ function _onEachFeature(feature, layer) {
   } else if (a2) {
     name = a2;
   }
+  
+  // Final fallback: if still Unknown but feature has properties.name, use it
+  // This handles disputed territories that topojson-client processes differently
+  if (name === 'Unknown' && feature.properties && feature.properties.name) {
+    name = feature.properties.name;
+  }
 
   layer.bindTooltip(_tooltip(name, sev, info), {
     sticky: true, className: '', opacity: 1,
