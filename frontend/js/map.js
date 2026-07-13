@@ -282,11 +282,7 @@ function _onEachFeature(feature, layer) {
   const sev  = info ? info.status : 'nodata';
   const name = NUM_TO_NAME[id] || a2 || feature.properties.name || 'Unknown';
 
-  if (name === 'Unknown') {
-    console.error('Country name is Unknown:', { featureId: feature.id, parsedId: id, alpha2: a2, propertiesName: feature.properties.name, feature: feature });
-  }
-
-  layer.bindTooltip(_tooltip(name, sev, info), {
+  layer.bindTooltip(_tooltip(name, sev, info, feature), {
     sticky: true, className: '', opacity: 1,
   });
 
@@ -326,7 +322,10 @@ function focusCountry(code) {
 }
 window.focusCountry = focusCountry;
 
-function _tooltip(name, sev, info) {
+function _tooltip(name, sev, info, feature) {
+  if (name === 'Unknown') {
+    console.error('Tooltip received Unknown name:', { name, sev, info, featureId: feature ? feature.id : null, featureProperties: feature ? feature.properties : null });
+  }
   const sevLabel = sev === 'nodata' ? 'No data'
     : esc(sev.charAt(0).toUpperCase() + sev.slice(1))
       + (info ? ' — ' + esc(String(info.active_events)) + ' event(s)' : '');
