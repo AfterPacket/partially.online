@@ -34,12 +34,15 @@ class Config:
     SITE_HASHTAG = os.getenv("SITE_HASHTAG", "")
 
     # ── Advertising ────────────────────────────────────────────────────────────
-    # Only ad *parameters* (IDs, slot numbers) — never raw HTML/scripts.
+    # Only ad *parameters* (IDs, URLs) — never raw HTML/scripts.
     # The frontend constructs ad tags from these validated values, so there
     # is zero XSS surface even if an env var is tampered with.
     ADSENSE_CLIENT_ID = os.getenv("ADSENSE_CLIENT_ID", "")   # e.g. ca-pub-1234567890
     ADSENSE_AD_SLOTS  = os.getenv("ADSENSE_AD_SLOTS", "")     # JSON: {"header":"123","sidebar":"456"}
-    HILLTOPADS_ZONE_IDS = os.getenv("HILLTOPADS_ZONE_IDS", "")  # JSON: {"header":"abc"}
+    # Custom ad scripts (HilltopAds, etc). JSON: {"header":"//domain.com/path..."}
+    # Values must be https:// or protocol-relative // URLs.
+    # The backend extracts the domain for CSP script-src allowlisting.
+    AD_SCRIPTS = os.getenv("AD_SCRIPTS", "")
 
     # ── Security ──────────────────────────────────────────────────────────────
     # Required to use any admin endpoint (POST /api/refresh, etc.)

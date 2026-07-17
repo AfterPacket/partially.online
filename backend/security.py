@@ -85,19 +85,50 @@ def _client_ip(request: Request) -> str:
 
 # ── Security headers middleware ───────────────────────────────────────────────
 
-_CSP = (
-    "default-src 'self'; "
-    "script-src 'self' cdn.jsdelivr.net pagead2.googlesyndication.com *.hilltopads.net *.hilltopads.com; "
-    "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "  # Leaflet needs inline styles
-    "img-src 'self' data: https://*.basemaps.cartocdn.com https://pagead2.googlesyndication.com; "
-    "connect-src 'self' https://cdn.jsdelivr.net; "         # world-atlas fetch
-    "frame-src https://googleads.g.doubleclick.net https://td.hilltopads.com; "
-    "font-src 'self'; "
-    "object-src 'none'; "
-    "frame-ancestors 'none'; "
-    "base-uri 'self'; "
-    "form-action 'self'"
-)
+def _build_csp() -> str:
+    """Build the Content-Security-Policy with ad script domains from config."""
+    # Always-allowed script domains (app + Leaflet + Chart.js)
+    script_domains = ["'self'", "cdn.jsdelivr.net", "pagead2.googlesyndication.com"]
+    # Always-allowed frame domains (AdSense iframes)
+    frame_domains = ["https://googleads.g.doubleclick.net"]
+    # Extract ad script domains from AD_SCRIPTS config and add them to CSP.
+    # This is the only way third-party ad scripts can load — CSP blocks
+    # everything else. The domain extraction itself is validated (https://
+    # or // prefix, no injection chars) before it reaches this point.
+    from urllib.parse import urlparse
+    if config.AD_SCRIPTS:
+        import json, re
+        try:
+            data = json.loads(config.AD_SCRIPTS)
+            for _placement, url in data.items():
+                if not isinstance(url, str):
+                    continue
+                # Normalise protocol-relative to https for parsing
+                full = url if url.startswith("https://") else "https:" + url if url.startswith("//") else ""
+                if not full:
+                    continue
+                domain = urlparse(full).hostname
+                if domain and re.match(r'^[a-z0-9.*-]+$', domain, re.IGNORECASE):
+                    script_domains.append(domain)
+                    frame_domains.append("https://" + domain)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return (
+        "default-src 'self'; "
+        f"script-src {' '.join(script_domains)}; "
+        "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "
+        "img-src 'self' data: https://*.basemaps.cartocdn.com https://pagead2.googlesyndication.com; "
+        "connect-src 'self' https://cdn.jsdelivr.net; "
+        f"frame-src {' '.join(frame_domains)}; "
+        "font-src 'self'; "
+        "object-src 'none'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+
+
+_CSP = _build_csp()
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

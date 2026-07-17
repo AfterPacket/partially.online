@@ -53,7 +53,7 @@ Open http://localhost:8000 in your browser.
 | `SITE_HASHTAG` | (empty) | Site hashtag added to social posts, e.g. `#PartiallyOnline` |
 | `ADSENSE_CLIENT_ID` | (empty) | Google AdSense client ID (e.g. `ca-pub-1234567890123456`) |
 | `ADSENSE_AD_SLOTS` | (empty) | JSON map of placements to slot IDs, e.g. `{"header":"123","sidebar":"456"}` |
-| `HILLTOPADS_ZONE_IDS` | (empty) | JSON map of placements to zone IDs, e.g. `{"header":"abc123"}` |
+| `AD_SCRIPTS` | (empty) | JSON map of placements to ad script URLs, e.g. `{"header":"//unfoldedtrade.com/..."}` |
 | `ADMIN_API_KEY` | (empty) | Required for admin endpoints |
 | `ALLOWED_ORIGINS` | * | CORS origins (comma-separated) |
 

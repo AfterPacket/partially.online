@@ -245,7 +245,7 @@ def _b(banner: Banner) -> dict:
 
 # ── Advertising ─────────────────────────────────────────────────────────────────
 #
-# Serves *only* validated ad parameters (IDs, slot numbers) — never raw HTML
+# Serves *only* validated ad parameters (IDs, URLs) — never raw HTML
 # or script tags. The frontend constructs ad elements from these values using
 # safe DOM APIs (createElement, setAttribute), so there is zero XSS surface
 # even if an env var is tampered with. Any value that fails validation is
@@ -253,7 +253,8 @@ def _b(banner: Banner) -> dict:
 
 _ADSENSE_RE = re.compile(r'^ca-pub-\d{16,}$')
 _AD_SLOT_RE = re.compile(r'^\d+$')
-_HILLTOP_RE = re.compile(r'^[A-Za-z0-9_-]+$')
+# Ad script URLs: must be https:// or protocol-relative //, no injection chars.
+_AD_SCRIPT_URL_RE = re.compile(r'^(https://|//)[^<>"\'\s]+$')
 _PLACEMENTS = {'header', 'sidebar', 'footer'}
 
 
@@ -286,9 +287,9 @@ def api_ads():
         slots = _parse_ad_slots(config.ADSENSE_AD_SLOTS, _AD_SLOT_RE)
         if slots:
             result["adsense_slots"] = slots
-    hilltop = _parse_ad_slots(config.HILLTOPADS_ZONE_IDS, _HILLTOP_RE)
-    if hilltop:
-        result["hilltopads_zones"] = hilltop
+    scripts = _parse_ad_slots(config.AD_SCRIPTS, _AD_SCRIPT_URL_RE)
+    if scripts:
+        result["ad_scripts"] = scripts
     return result
 
 

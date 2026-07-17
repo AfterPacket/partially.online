@@ -176,15 +176,17 @@ async function loadAds() {
       }
     }
 
-    if (data.hilltopads_zones) {
-      for (const [placement, zoneId] of Object.entries(data.hilltopads_zones)) {
+    if (data.ad_scripts) {
+      for (const [placement, url] of Object.entries(data.ad_scripts)) {
         const container = document.getElementById('ad-' + placement);
         if (!container) continue;
         const script = document.createElement('script');
         script.async = true;
         script.setAttribute('data-cfasync', 'false');
-        // src built from validated zone ID (alphanumeric only).
-        script.src = 'https://hilltopads.net/' + encodeURIComponent(zoneId) + '.js';
+        // The backend already validated this URL (https:// or //, no injection
+        // chars). We still only use it as a script src — never as innerHTML.
+        script.src = url.startsWith('//') ? 'https:' + url : url;
+        script.referrerPolicy = 'no-referrer-when-downgrade';
         container.appendChild(script);
         container.classList.add('ad-slot-active');
       }
