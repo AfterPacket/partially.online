@@ -7,6 +7,7 @@ let allEvents = [];
 let refreshTimer = null;
 let currentDetailCode = null;
 let currentDetailShare = null;
+let siteHashtag = '';   // served by /api/status (SITE_HASHTAG env var)
 
 // ── Banners ────────────────────────────────────────────────────────────────────
 const BANNER_ICONS = { info: 'ℹ', warning: '⚠', success: '✓' };
@@ -130,6 +131,7 @@ async function loadAll() {
 
 // ── Header ────────────────────────────────────────────────────────────────────
 function updateHeader(s) {
+  siteHashtag = s.site_hashtag || '';
   document.getElementById('val-active').textContent = s.active_events;
   document.getElementById('val-severe').textContent = s.severe_events;
   const d = new Date(s.last_updated);
@@ -188,7 +190,9 @@ function renderEvents() {
 function _shareBtnHTML(ev) {
   return '<button class="share-btn" data-title="' + esc(ev.title) + '" '+
     'data-severity="' + esc(ev.severity) + '" data-type="' + esc(ev.event_type) + '" '+
-    'data-source="' + esc(ev.source) + '" data-country="' + esc(ev.country_code) + '">Share</button>';
+    'data-source="' + esc(ev.source) + '" data-country="' + esc(ev.country_code) + '" '+
+    'data-country-name="' + esc(ev.country_name || '') + '" '+
+    'data-region="' + esc(ev.region_name || '') + '">Share</button>';
 }
 
 // ── Country detail panel ──────────────────────────────────────────────────────
@@ -214,6 +218,8 @@ window.showCountryDetail = async function(code) {
     type: (data.active_events && data.active_events.length) ? data.active_events[0].event_type : '',
     source: '',
     country: data.code,
+    countryName: data.name,
+    region: '',
   };
 
   // Events
@@ -306,7 +312,8 @@ function _setupShareMenu() {
     const instance = entered.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (!instance) return;
     localStorage.setItem('mastodonInstance', instance);
-    const text = _shareText(shareTarget) + ' ' + _shareUrl(shareTarget.country);
+    const tags = _shareHashtags(shareTarget);
+    const text = _shareText(shareTarget) + ' ' + _shareUrl(shareTarget.country) + (tags ? ' ' + tags : '');
     window.open('https://' + instance + '/share?text=' + encodeURIComponent(text), '_blank', 'noopener');
     closeShareMenu();
   });
@@ -345,18 +352,43 @@ function _shareUrl(countryCode) {
   return location.origin + '/?country=' + encodeURIComponent(countryCode);
 }
 
+// CamelCase a label into a hashtag: 'Jammu & Kashmir' -> '#JammuKashmir'.
+// Mirrors _hashtag() in backend/alerts.py so shared and auto posts match.
+function _hashtag(label) {
+  if (!label) return '';
+  const tag = label.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+  return tag ? '#' + tag : '';
+}
+
+function _shareHashtags(d) {
+  const tags = [];
+  if (siteHashtag) {
+    const site = siteHashtag.trim();
+    tags.push(site.startsWith('#') ? site : '#' + site);
+  }
+  [d.countryName, d.region, d.type].forEach(label => {
+    const t = _hashtag(label);
+    if (t && !tags.includes(t)) tags.push(t);
+  });
+  return tags.join(' ');
+}
+
 function openShareMenu(anchorEl, data) {
   shareTarget = {
     title: data.title, severity: data.severity, type: data.type,
     source: data.source, country: data.country,
+    countryName: data.countryName || '', region: data.region || '',
   };
   const url  = _shareUrl(shareTarget.country);
   const text = _shareText(shareTarget);
+  const tags = _shareHashtags(shareTarget);
+  const tagSuffix = tags ? ' ' + tags : '';
 
   document.getElementById('share-x').href =
-    'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(url);
+    'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text + tagSuffix) + '&url=' + encodeURIComponent(url);
   document.getElementById('share-bsky').href =
-    'https://bsky.app/intent/compose?text=' + encodeURIComponent(text + ' ' + url);
+    'https://bsky.app/intent/compose?text=' + encodeURIComponent(text + ' ' + url + tagSuffix);
 
   const menu = document.getElementById('share-menu');
   menu.classList.remove('hidden');

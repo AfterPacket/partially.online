@@ -104,6 +104,9 @@ def api_status(db: Session = Depends(get_db)):
         "severe_events": severe,
         "confirmed":     confirmed,
         "last_updated":  datetime.datetime.utcnow().isoformat() + "Z",
+        # Consumed by the frontend Share button so posts carry the same
+        # site tag as backend Mastodon posts, without hardcoding it in JS.
+        "site_hashtag":  config.SITE_HASHTAG,
     }
 
 

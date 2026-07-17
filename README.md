@@ -50,6 +50,7 @@ Open http://localhost:8000 in your browser.
 | `MASTODON_ACCESS_TOKEN` | (empty) | Access token with `write:statuses` scope |
 | `MASTODON_VISIBILITY` | public | Post visibility: `public` / `unlisted` / `private` |
 | `PUBLIC_SITE_URL` | (empty) | Public URL of this site, linked in social posts |
+| `SITE_HASHTAG` | (empty) | Site hashtag added to social posts, e.g. `#PartiallyOnline` |
 | `ADMIN_API_KEY` | (empty) | Required for admin endpoints |
 | `ALLOWED_ORIGINS` | * | CORS origins (comma-separated) |
 

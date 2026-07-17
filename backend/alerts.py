@@ -41,6 +41,25 @@ async def _send_discord(event: OutageEvent) -> bool:
         return False
 
 
+def _hashtag(label: str) -> str:
+    """CamelCase a label into a hashtag: 'Jammu & Kashmir' -> '#JammuKashmir'."""
+    words = "".join(ch if ch.isalnum() else " " for ch in label).split()
+    tag = "".join(w[:1].upper() + w[1:] for w in words)
+    return f"#{tag}" if tag else ""
+
+
+def _hashtags(event: OutageEvent) -> str:
+    tags = []
+    if config.SITE_HASHTAG:
+        site = config.SITE_HASHTAG.strip()
+        tags.append(site if site.startswith("#") else f"#{site}")
+    for label in (event.country_name, event.region_name, event.event_type):
+        if label:
+            tags.append(_hashtag(label))
+    deduped = list(dict.fromkeys(t for t in tags if t))
+    return " ".join(deduped)
+
+
 def _status_text(event: OutageEvent) -> str:
     """Same format the frontend Share button produces (see app.js _shareText)."""
     parts = [event.title]
@@ -53,6 +72,9 @@ def _status_text(event: OutageEvent) -> str:
     text = " ".join(parts) + "."
     if config.PUBLIC_SITE_URL:
         text += f" {config.PUBLIC_SITE_URL.rstrip('/')}/?country={event.country_code}"
+    tags = _hashtags(event)
+    if tags:
+        text += f" {tags}"
     return text
 
 

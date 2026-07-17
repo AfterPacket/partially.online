@@ -29,6 +29,10 @@ class Config:
     # social posts (same link the frontend Share button produces).
     PUBLIC_SITE_URL = os.getenv("PUBLIC_SITE_URL", "")
 
+    # Site hashtag appended to social posts (backend Mastodon posts and the
+    # frontend Share button), e.g. "#PartiallyOnline". Leading # optional.
+    SITE_HASHTAG = os.getenv("SITE_HASHTAG", "")
+
     # ── Security ──────────────────────────────────────────────────────────────
     # Required to use any admin endpoint (POST /api/refresh, etc.)
     # Generate: python -c "import secrets; print(secrets.token_hex(32))"
