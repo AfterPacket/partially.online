@@ -110,6 +110,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         h["Referrer-Policy"]         = "strict-origin-when-cross-origin"
         h["Permissions-Policy"]      = "geolocation=(), microphone=(), camera=()"
         h["Content-Security-Policy"] = _CSP
+        # Without an explicit Cache-Control, browsers heuristically cache the
+        # static frontend and keep running stale JS after a deploy until a
+        # hard refresh. no-cache forces revalidation on every load; unchanged
+        # files still return as cheap 304s via StaticFiles' ETag support.
+        h.setdefault("Cache-Control", "no-cache")
         # Uncomment when deployed behind HTTPS:
         # h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         return response
