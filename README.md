@@ -13,6 +13,7 @@ Aggregates data from IODA, OONI, and Cloudflare Radar into a live world map.
 - Historical 30-day timeline per country
 - Event detail panel with source attribution and probe confirmation
 - Discord/webhook alerting for significant events
+- Automatic Mastodon posts for significant events
 - Dismissible site banners for announcements
 - Auto-refreshes every 60 seconds (data collected every 15 min)
 
@@ -45,6 +46,10 @@ Open http://localhost:8000 in your browser.
 | `PROBE_INTERVAL_MINUTES` | 30 | Trinocular probe frequency |
 | `CLOUDFLARE_API_TOKEN` | (empty) | Cloudflare Radar token |
 | `ALERT_WEBHOOK_URL` | (empty) | Discord webhook URL |
+| `MASTODON_INSTANCE_URL` | (empty) | Mastodon instance, e.g. `https://mastodon.social` |
+| `MASTODON_ACCESS_TOKEN` | (empty) | Access token with `write:statuses` scope |
+| `MASTODON_VISIBILITY` | public | Post visibility: `public` / `unlisted` / `private` |
+| `PUBLIC_SITE_URL` | (empty) | Public URL of this site, linked in social posts |
 | `ADMIN_API_KEY` | (empty) | Required for admin endpoints |
 | `ALLOWED_ORIGINS` | * | CORS origins (comma-separated) |
 

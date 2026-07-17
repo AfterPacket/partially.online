@@ -3,6 +3,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from .alerts import check_and_send_alerts
 from .analyzer import (check_resolutions, confirm_events_with_probe,
                        expire_old_events, get_country_status, upsert_events)
 from .collectors.cloudflare_radar import CloudflareRadarCollector
@@ -62,9 +63,10 @@ async def _run_api_collection():
     db = SessionLocal()
     try:
         expire_old_events(db)
-        added = upsert_events(db, all_events)
+        new_ids = upsert_events(db, all_events)
         check_resolutions(db, seen_keys=seen)
-        log.info(f"API cycle done: {len(all_events)} raw, {added} new, {len(seen)} (country, region) pairs seen")
+        await check_and_send_alerts(db, new_ids)
+        log.info(f"API cycle done: {len(all_events)} raw, {len(new_ids)} new, {len(seen)} (country, region) pairs seen")
     finally:
         db.close()
 

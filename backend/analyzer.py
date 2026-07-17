@@ -9,8 +9,9 @@ from .models import CountryBelief, OutageEvent
 log = logging.getLogger(__name__)
 
 
-def upsert_events(db: Session, new_events: list) -> int:
-    added = 0
+def upsert_events(db: Session, new_events: list) -> list:
+    """Returns the ids of newly created events (existing ones are updated in place)."""
+    created = []
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=48)
     for ev in new_events:
         if not ev.get("country_code"):
@@ -38,11 +39,12 @@ def upsert_events(db: Session, new_events: list) -> int:
             existing.baseline_value = ev.get("baseline_value")
             existing.updated_at     = datetime.datetime.utcnow()
         else:
-            db.add(OutageEvent(**ev))
-            added += 1
+            row = OutageEvent(**ev)
+            db.add(row)
+            created.append(row)
             _reset_belief_for_new_event(db, ev["country_code"])
     db.commit()
-    return added
+    return [row.id for row in created]
 
 
 def _reset_belief_for_new_event(db: Session, country_code: str):
