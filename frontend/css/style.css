@@ -105,6 +105,32 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   position: relative;
   z-index: 100;
 }
+
+/* ── Ad slots ─────────────────────────────────────────────────── */
+/* Hidden by default; populated by JS only when config is present.
+   This means a visitor with ad-blockers or no config sees nothing. */
+.ad-slot {
+  display: none;
+  text-align: center;
+  overflow: hidden;
+}
+.ad-slot.ad-slot-active {
+  display: block;
+}
+.ad-slot-header {
+  max-width: 728px;
+  margin: 0 auto;
+  padding: 8px 12px 0;
+}
+.ad-slot-sidebar {
+  margin: 8px 0;
+  min-height: 250px;
+}
+.ad-slot-footer {
+  max-width: 728px;
+  margin: 8px auto;
+  padding: 8px 12px;
+}
 .banner {
   display: flex;
   align-items: flex-start;
@@ -647,4 +673,8 @@ path.leaflet-interactive:focus-visible { outline: none; }
   /* Slightly larger touch targets on the controls people actually tap. */
   .share-btn, .dp-close { padding: 4px 9px; font-size: 11px; }
   .filter-sel { padding: 7px 8px; }
+
+  /* Ads go full width on mobile. */
+  .ad-slot-header, .ad-slot-footer { max-width: 100%; }
+  .ad-slot-sidebar { min-height: 100px; }
 }

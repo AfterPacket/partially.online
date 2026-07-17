@@ -33,6 +33,14 @@ class Config:
     # frontend Share button), e.g. "#PartiallyOnline". Leading # optional.
     SITE_HASHTAG = os.getenv("SITE_HASHTAG", "")
 
+    # ── Advertising ────────────────────────────────────────────────────────────
+    # Only ad *parameters* (IDs, slot numbers) — never raw HTML/scripts.
+    # The frontend constructs ad tags from these validated values, so there
+    # is zero XSS surface even if an env var is tampered with.
+    ADSENSE_CLIENT_ID = os.getenv("ADSENSE_CLIENT_ID", "")   # e.g. ca-pub-1234567890
+    ADSENSE_AD_SLOTS  = os.getenv("ADSENSE_AD_SLOTS", "")     # JSON: {"header":"123","sidebar":"456"}
+    HILLTOPADS_ZONE_IDS = os.getenv("HILLTOPADS_ZONE_IDS", "")  # JSON: {"header":"abc"}
+
     # ── Security ──────────────────────────────────────────────────────────────
     # Required to use any admin endpoint (POST /api/refresh, etc.)
     # Generate: python -c "import secrets; print(secrets.token_hex(32))"

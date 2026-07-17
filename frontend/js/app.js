@@ -107,6 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 async function loadAll() {
+  // Kick off ad loading in parallel — non-critical, never blocks the UI.
+  loadAds();
   try {
     const [status, events, countries] = await Promise.all([
       apiFetch('/api/status'),
@@ -126,6 +128,70 @@ async function loadAll() {
     });
   } catch (e) {
     console.error('loadAll failed:', e);
+  }
+}
+
+// ── Advertising ───────────────────────────────────────────────────────────────
+//
+// SECURITY: This code NEVER injects raw HTML. It constructs ad elements
+// entirely through safe DOM APIs (createElement, setAttribute) using only
+// validated parameters from /api/ads (which are themselves strict-regex-
+// validated on the backend). There is no innerHTML, no eval, and no
+// document.write. If the backend returns unexpected values, they're silently
+// ignored — they never reach the DOM.
+
+async function loadAds() {
+  try {
+    const data = await apiFetch('/api/ads');
+    if (!data) return;
+
+    if (data.adsense_client_id) {
+      // One AdSense script tag per page, loaded once.
+      const script = document.createElement('script');
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      // src built from validated client ID — never from user input.
+      script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' +
+        encodeURIComponent(data.adsense_client_id);
+      document.head.appendChild(script);
+
+      // Render configured ad slots into their placeholder <div>s.
+      const slots = data.adsense_slots || {};
+      for (const [placement, slotId] of Object.entries(slots)) {
+        const container = document.getElementById('ad-' + placement);
+        if (!container) continue;
+        const ins = document.createElement('ins');
+        // All attribute values come from server-validated IDs (ca-pub-\d{16,},
+        // pure numeric slot IDs). No user-controlled strings reach these.
+        ins.className = 'adsbygoogle';
+        ins.style.display = 'block';
+        ins.setAttribute('data-ad-client', data.adsense_client_id);
+        ins.setAttribute('data-ad-slot', slotId);
+        ins.setAttribute('data-ad-format', 'auto');
+        ins.setAttribute('data-full-width-responsive', 'true');
+        container.appendChild(ins);
+        container.classList.add('ad-slot-active');
+        // Each ins needs its own push to trigger the ad fill.
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+      }
+    }
+
+    if (data.hilltopads_zones) {
+      for (const [placement, zoneId] of Object.entries(data.hilltopads_zones)) {
+        const container = document.getElementById('ad-' + placement);
+        if (!container) continue;
+        const script = document.createElement('script');
+        script.async = true;
+        script.setAttribute('data-cfasync', 'false');
+        // src built from validated zone ID (alphanumeric only).
+        script.src = 'https://hilltopads.net/' + encodeURIComponent(zoneId) + '.js';
+        container.appendChild(script);
+        container.classList.add('ad-slot-active');
+      }
+    }
+  } catch (e) {
+    // Ads are non-critical — never block or crash the page.
+    console.error('Ad loading failed:', e);
   }
 }
 

@@ -1,7 +1,9 @@
 import asyncio
 import datetime
+import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -239,6 +241,55 @@ def _b(banner: Banner) -> dict:
         "active":    bool(banner.active),
         "created_at": (banner.created_at.isoformat() + "Z") if banner.created_at else None,
     }
+
+
+# ── Advertising ─────────────────────────────────────────────────────────────────
+#
+# Serves *only* validated ad parameters (IDs, slot numbers) — never raw HTML
+# or script tags. The frontend constructs ad elements from these values using
+# safe DOM APIs (createElement, setAttribute), so there is zero XSS surface
+# even if an env var is tampered with. Any value that fails validation is
+# silently stripped rather than served.
+
+_ADSENSE_RE = re.compile(r'^ca-pub-\d{16,}$')
+_AD_SLOT_RE = re.compile(r'^\d+$')
+_HILLTOP_RE = re.compile(r'^[A-Za-z0-9_-]+$')
+_PLACEMENTS = {'header', 'sidebar', 'footer'}
+
+
+def _parse_ad_slots(raw: str, pattern: re.Pattern) -> dict | None:
+    """Parse a JSON map of {placement: id}, validating each value."""
+    if not raw.strip():
+        return None
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    result = {}
+    for key, value in data.items():
+        if key not in _PLACEMENTS:
+            continue
+        if not isinstance(value, str) or not pattern.match(value):
+            continue
+        result[key] = value
+    return result or None
+
+
+@app.get("/api/ads", dependencies=[Depends(rate_limit)])
+def api_ads():
+    """Validated ad configuration for the frontend (no HTML, no scripts)."""
+    result = {}
+    if config.ADSENSE_CLIENT_ID and _ADSENSE_RE.match(config.ADSENSE_CLIENT_ID):
+        result["adsense_client_id"] = config.ADSENSE_CLIENT_ID
+        slots = _parse_ad_slots(config.ADSENSE_AD_SLOTS, _AD_SLOT_RE)
+        if slots:
+            result["adsense_slots"] = slots
+    hilltop = _parse_ad_slots(config.HILLTOPADS_ZONE_IDS, _HILLTOP_RE)
+    if hilltop:
+        result["hilltopads_zones"] = hilltop
+    return result
 
 
 # ── Admin endpoints (require X-Admin-Key header, see security.require_admin) ──

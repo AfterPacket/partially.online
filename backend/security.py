@@ -87,10 +87,11 @@ def _client_ip(request: Request) -> str:
 
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' cdn.jsdelivr.net; "
+    "script-src 'self' cdn.jsdelivr.net pagead2.googlesyndication.com *.hilltopads.net *.hilltopads.com; "
     "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "  # Leaflet needs inline styles
-    "img-src 'self' data: https://*.basemaps.cartocdn.com; "
+    "img-src 'self' data: https://*.basemaps.cartocdn.com https://pagead2.googlesyndication.com; "
     "connect-src 'self' https://cdn.jsdelivr.net; "         # world-atlas fetch
+    "frame-src https://googleads.g.doubleclick.net https://td.hilltopads.com; "
     "font-src 'self'; "
     "object-src 'none'; "
     "frame-ancestors 'none'; "
