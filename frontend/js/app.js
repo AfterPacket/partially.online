@@ -338,7 +338,12 @@ function _setupShareMenu() {
 }
 
 function _shareText(d) {
-  const parts = [d.title];
+  // Guarantee region-scoped events name their region (mirrors backend
+  // _display_title) — two regions of one country must not read identically.
+  let title = d.title || '';
+  if (d.region && !title.toLowerCase().includes(d.region.toLowerCase()))
+    title += ' (' + d.region + ')';
+  const parts = [title];
   if (d.severity || d.type) {
     parts.push('— ' + [d.severity, d.type].filter(Boolean).map(
       s => s.charAt(0).toUpperCase() + s.slice(1)

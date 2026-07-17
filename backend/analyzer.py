@@ -128,9 +128,53 @@ def expire_old_events(db: Session):
     for ev in events:
         ev.is_active = False
         ev.resolved = True
-        ev.resolved_at = datetime.datetime.utcnow()
+        # end_time is the best estimate of when the outage actually ended
+        # (last time the source confirmed it was active), not the arbitrary
+        # wall-clock time this cleanup cycle ran.
         ev.end_time = ev.updated_at or ev.start_time
+        ev.resolved_at = ev.end_time
     db.commit()
+
+
+def _reset_belief_for_new_event(db: Session, country_code: str):
+    """
+    A brand-new event means a source just flagged this country as disrupted
+    right now. If we left its Trinocular belief at whatever it was before —
+    the optimistic 0.99 startup default, or a stale belief left over from an
+    unrelated earlier resolution — a single negative probe next round isn't
+    enough to overturn that strong prior (correct Bayesian behavior in
+    isolation, see collectors/trinocular.py), so the round can read as
+    "confirmed up" off one bad-for-it probe, on the very cycle the event was
+    created. Left unfixed, that produces exactly the flapping duplicate-row
+    pattern seen in production: the event resolves on a stale prior, the
+    source reports the same ongoing outage again next cycle, finds no active
+    row to update, creates a new one, and the cycle repeats. Resetting to a
+    neutral 0.5 forces fresh evidence to be gathered before either
+    conclusion is reached.
+
+    Uses an atomic INSERT ... ON CONFLICT DO UPDATE rather than a
+    check-then-insert (query for a row, add() if missing): a country with
+    both a country-wide and a region-scoped alert in the same batch (or
+    several region alerts at once) calls this more than once for the same
+    country_code within one upsert_events() loop, in one uncommitted
+    session. With autoflush=False (see database.py), a plain SELECT run
+    twice for the same key doesn't see the first call's still-pending add(),
+    so both conclude "no row exists" and both try to insert one — a
+    sqlite UNIQUE constraint violation that rolls back the entire batch.
+    The atomic upsert has no such window: the second call correctly sees
+    the first call's row (even uncommitted, within the same transaction)
+    and updates it instead of colliding with it. availability is
+    deliberately left out of the update clause so a reset never clobbers a
+    previously-learned response rate — it's only ever seeded on first insert.
+    """
+    stmt = sqlite_upsert(CountryBelief).values(
+        country_code=country_code, belief_up=0.5, availability=0.9, state="uncertain",
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[CountryBelief.country_code],
+        set_={"belief_up": 0.5, "state": "uncertain"},
+    )
+    db.execute(stmt)
 
 
 # Only ever sharpens the generic "disruption" bucket into something more
@@ -168,7 +212,7 @@ def confirm_events_with_probe(db: Session, probe_results: dict):
     (IODA) no longer reporting that specific region.
     """
     if not probe_results:
-        return
+        return []
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
     events = (
         db.query(OutageEvent)
@@ -177,7 +221,7 @@ def confirm_events_with_probe(db: Session, probe_results: dict):
     )
     now = datetime.datetime.utcnow()
     updated       = 0
-    resolved      = 0
+    resolved_ids: list = []
     recategorized = 0
     for ev in events:
         if ev.region_name:
@@ -188,14 +232,14 @@ def confirm_events_with_probe(db: Session, probe_results: dict):
         if result.get("confirmed_up"):
             ev.is_active       = False
             ev.resolved        = True
-            ev.resolved_at     = now
             # Use updated_at (last time the source confirmed the outage was
             # still active) as a better estimate of when the outage actually
             # ended, rather than the arbitrary time this probe cycle ran.
             ev.end_time        = ev.updated_at or ev.start_time
+            ev.resolved_at     = ev.end_time
             ev.probe_confirmed = False
             ev.probe_note      = result.get("note", "")
-            resolved += 1
+            resolved_ids.append(ev.id)
             continue
 
         confidence = result.get("confidence", 0)
@@ -212,9 +256,10 @@ def confirm_events_with_probe(db: Session, probe_results: dict):
     db.commit()
     log.info(
         f"[analyzer] Probe confirmation applied to {updated} events, "
-        f"{resolved} resolved (confirmed back online), "
+        f"{len(resolved_ids)} resolved (confirmed back online), "
         f"{recategorized} recategorized from probe evidence"
     )
+    return resolved_ids
 
 
 def check_resolutions(db: Session, seen_keys: set):
@@ -253,18 +298,19 @@ def check_resolutions(db: Session, seen_keys: set):
         .all()
     )
 
-    resolved_count = 0
+    resolved_ids: list = []
     for ev in stale_active:
         if (ev.country_code, ev.region_name) not in seen_keys:
             ev.is_active   = False
             ev.resolved    = True
-            ev.resolved_at = now
             # Use updated_at (last time the source confirmed the outage was
             # still active) as a better estimate of when the outage actually
             # ended, rather than the arbitrary time this interval cycle ran.
             ev.end_time    = ev.updated_at or ev.start_time
-            resolved_count += 1
+            ev.resolved_at = ev.end_time
+            resolved_ids.append(ev.id)
 
-    if resolved_count:
+    if resolved_ids:
         db.commit()
-        log.info(f"[analyzer] Auto-resolved {resolved_count} events (no longer in source data)")
+        log.info(f"[analyzer] Auto-resolved {len(resolved_ids)} events (no longer in source data)")
+    return resolved_ids

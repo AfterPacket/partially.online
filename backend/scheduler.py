@@ -3,7 +3,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .alerts import check_and_send_alerts
+from .alerts import check_and_send_alerts, check_and_send_resolved_alerts
 from .analyzer import (check_resolutions, confirm_events_with_probe,
                        expire_old_events, get_country_status, upsert_events)
 from .collectors.cloudflare_radar import CloudflareRadarCollector
@@ -64,9 +64,11 @@ async def _run_api_collection():
     try:
         expire_old_events(db)
         new_ids = upsert_events(db, all_events)
-        check_resolutions(db, seen_keys=seen)
+        resolved_ids = check_resolutions(db, seen_keys=seen)
         await check_and_send_alerts(db, new_ids)
-        log.info(f"API cycle done: {len(all_events)} raw, {len(new_ids)} new, {len(seen)} (country, region) pairs seen")
+        await check_and_send_resolved_alerts(db, resolved_ids)
+        log.info(f"API cycle done: {len(all_events)} raw, {len(new_ids)} new, "
+                 f"{len(resolved_ids)} resolved, {len(seen)} (country, region) pairs seen")
     finally:
         db.close()
 
@@ -94,7 +96,8 @@ async def _run_probe_collection():
             # One session spans probing (persists belief per round) and the
             # resulting event confirmation/resolution.
             results = await col.probe_countries(db, country_codes=active_ccs)
-            confirm_events_with_probe(db, results)
+            resolved_ids = confirm_events_with_probe(db, results)
+            await check_and_send_resolved_alerts(db, resolved_ids)
         finally:
             db.close()
     except Exception as exc:
