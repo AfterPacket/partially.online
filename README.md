@@ -51,9 +51,9 @@ Open http://localhost:8000 in your browser.
 | `MASTODON_VISIBILITY` | public | Post visibility: `public` / `unlisted` / `private` |
 | `PUBLIC_SITE_URL` | (empty) | Public URL of this site, linked in social posts |
 | `SITE_HASHTAG` | (empty) | Site hashtag added to social posts, e.g. `#PartiallyOnline` |
-| `ADSENSE_CLIENT_ID` | (empty) | Google AdSense client ID (e.g. `ca-pub-1234567890123456`) |
-| `ADSENSE_AD_SLOTS` | (empty) | JSON map of placements to slot IDs, e.g. `{"header":"123","sidebar":"456"}` |
-| `AD_SCRIPTS` | (empty) | JSON map of placements to ad script URLs, e.g. `{"header":"//unfoldedtrade.com/..."}` |
+| `SPONSOR_GOOGLE_ID` | (empty) | Google AdSense client ID (e.g. `ca-pub-1234567890123456`) |
+| `SPONSOR_GOOGLE_SLOTS` | (empty) | JSON map of placements to slot IDs, e.g. `{"header":"123","sidebar":"456"}` |
+| `SPONSOR_SCRIPTS` | (empty) | JSON map of placements to sponsor script URLs, e.g. `{"header":"//unfoldedtrade.com/..."}` |
 | `ADMIN_API_KEY` | (empty) | Required for admin endpoints |
 | `ALLOWED_ORIGINS` | * | CORS origins (comma-separated) |
 

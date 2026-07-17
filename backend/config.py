@@ -33,16 +33,17 @@ class Config:
     # frontend Share button), e.g. "#PartiallyOnline". Leading # optional.
     SITE_HASHTAG = os.getenv("SITE_HASHTAG", "")
 
-    # ── Advertising ────────────────────────────────────────────────────────────
-    # Only ad *parameters* (IDs, URLs) — never raw HTML/scripts.
-    # The frontend constructs ad tags from these validated values, so there
+    # ── Sponsor placements ────────────────────────────────────────────────────
+    # Only placement parameters (IDs, URLs) — never raw HTML/scripts.
+    # The frontend constructs tags from these validated values, so there
     # is zero XSS surface even if an env var is tampered with.
-    ADSENSE_CLIENT_ID = os.getenv("ADSENSE_CLIENT_ID", "")   # e.g. ca-pub-1234567890
-    ADSENSE_AD_SLOTS  = os.getenv("ADSENSE_AD_SLOTS", "")     # JSON: {"header":"123","sidebar":"456"}
-    # Custom ad scripts (HilltopAds, etc). JSON: {"header":"//domain.com/path..."}
+    # Names deliberately avoid ad‑blocker trigger words.
+    SPONSOR_GOOGLE_ID    = os.getenv("SPONSOR_GOOGLE_ID", "")     # e.g. ca-pub-1234567890
+    SPONSOR_GOOGLE_SLOTS = os.getenv("SPONSOR_GOOGLE_SLOTS", "")   # JSON: {"header":"123","sidebar":"456"}
+    # Custom sponsor scripts (HilltopAds, etc). JSON: {"header":"//domain.com/path..."}
     # Values must be https:// or protocol-relative // URLs.
     # The backend extracts the domain for CSP script-src allowlisting.
-    AD_SCRIPTS = os.getenv("AD_SCRIPTS", "")
+    SPONSOR_SCRIPTS = os.getenv("SPONSOR_SCRIPTS", "")
 
     # ── Security ──────────────────────────────────────────────────────────────
     # Required to use any admin endpoint (POST /api/refresh, etc.)

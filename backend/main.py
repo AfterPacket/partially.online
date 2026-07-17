@@ -245,20 +245,20 @@ def _b(banner: Banner) -> dict:
 
 # ── Advertising ─────────────────────────────────────────────────────────────────
 #
-# Serves *only* validated ad parameters (IDs, URLs) — never raw HTML
-# or script tags. The frontend constructs ad elements from these values using
+# Serves *only* validated placement parameters (IDs, URLs) — never raw HTML
+# or script tags. The frontend constructs elements from these values using
 # safe DOM APIs (createElement, setAttribute), so there is zero XSS surface
 # even if an env var is tampered with. Any value that fails validation is
 # silently stripped rather than served.
 
-_ADSENSE_RE = re.compile(r'^ca-pub-\d{16,}$')
-_AD_SLOT_RE = re.compile(r'^\d+$')
-# Ad script URLs: must be https:// or protocol-relative //, no injection chars.
-_AD_SCRIPT_URL_RE = re.compile(r'^(https://|//)[^<>"\'\s]+$')
+_GOOGLE_ID_RE = re.compile(r'^ca-pub-\d{16,}$')
+_GOOGLE_SLOT_RE = re.compile(r'^\d+$')
+# Sponsor script URLs: must be https:// or protocol-relative //, no injection chars.
+_SCRIPT_URL_RE = re.compile(r'^(https://|//)[^<>"\'\s]+$')
 _PLACEMENTS = {'header', 'sidebar', 'footer'}
 
 
-def _parse_ad_slots(raw: str, pattern: re.Pattern) -> dict | None:
+def _parse_slots(raw: str, pattern: re.Pattern) -> dict | None:
     """Parse a JSON map of {placement: id}, validating each value."""
     if not raw.strip():
         return None
@@ -278,18 +278,18 @@ def _parse_ad_slots(raw: str, pattern: re.Pattern) -> dict | None:
     return result or None
 
 
-@app.get("/api/ads", dependencies=[Depends(rate_limit)])
-def api_ads():
-    """Validated ad configuration for the frontend (no HTML, no scripts)."""
+@app.get("/api/placements", dependencies=[Depends(rate_limit)])
+def api_placements():
+    """Validated placement configuration for the frontend (no HTML, no scripts)."""
     result = {}
-    if config.ADSENSE_CLIENT_ID and _ADSENSE_RE.match(config.ADSENSE_CLIENT_ID):
-        result["adsense_client_id"] = config.ADSENSE_CLIENT_ID
-        slots = _parse_ad_slots(config.ADSENSE_AD_SLOTS, _AD_SLOT_RE)
+    if config.SPONSOR_GOOGLE_ID and _GOOGLE_ID_RE.match(config.SPONSOR_GOOGLE_ID):
+        result["google_id"] = config.SPONSOR_GOOGLE_ID
+        slots = _parse_slots(config.SPONSOR_GOOGLE_SLOTS, _GOOGLE_SLOT_RE)
         if slots:
-            result["adsense_slots"] = slots
-    scripts = _parse_ad_slots(config.AD_SCRIPTS, _AD_SCRIPT_URL_RE)
+            result["google_slots"] = slots
+    scripts = _parse_slots(config.SPONSOR_SCRIPTS, _SCRIPT_URL_RE)
     if scripts:
-        result["ad_scripts"] = scripts
+        result["scripts"] = scripts
     return result
 
 

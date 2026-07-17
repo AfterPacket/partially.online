@@ -108,25 +108,25 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 /* ── Ad slots ─────────────────────────────────────────────────── */
 /* Hidden by default; populated by JS only when config is present.
-   This means a visitor with ad-blockers or no config sees nothing. */
-.ad-slot {
+   This means a visitor with no config sees nothing. */
+.sponsor-slot {
   display: none;
   text-align: center;
   overflow: hidden;
 }
-.ad-slot.ad-slot-active {
+.sponsor-slot.sponsor-slot-active {
   display: block;
 }
-.ad-slot-header {
+.sponsor-slot-header {
   max-width: 728px;
   margin: 0 auto;
   padding: 8px 12px 0;
 }
-.ad-slot-sidebar {
+.sponsor-slot-sidebar {
   margin: 8px 0;
   min-height: 250px;
 }
-.ad-slot-footer {
+.sponsor-slot-footer {
   max-width: 728px;
   margin: 8px auto;
   padding: 8px 12px;
@@ -675,6 +675,6 @@ path.leaflet-interactive:focus-visible { outline: none; }
   .filter-sel { padding: 7px 8px; }
 
   /* Ads go full width on mobile. */
-  .ad-slot-header, .ad-slot-footer { max-width: 100%; }
-  .ad-slot-sidebar { min-height: 100px; }
+  .sponsor-slot-header, .sponsor-slot-footer { max-width: 100%; }
+  .sponsor-slot-sidebar { min-height: 100px; }
 }

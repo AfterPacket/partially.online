@@ -86,20 +86,21 @@ def _client_ip(request: Request) -> str:
 # ── Security headers middleware ───────────────────────────────────────────────
 
 def _build_csp() -> str:
-    """Build the Content-Security-Policy with ad script domains from config."""
+    """Build the Content-Security-Policy with sponsor script domains from config."""
     # Always-allowed script domains (app + Leaflet + Chart.js)
     script_domains = ["'self'", "cdn.jsdelivr.net", "pagead2.googlesyndication.com"]
-    # Always-allowed frame domains (AdSense iframes)
+    # Always-allowed frame domains
     frame_domains = ["https://googleads.g.doubleclick.net"]
-    # Extract ad script domains from AD_SCRIPTS config and add them to CSP.
-    # This is the only way third-party ad scripts can load — CSP blocks
-    # everything else. The domain extraction itself is validated (https://
-    # or // prefix, no injection chars) before it reaches this point.
+    # Extract sponsor script domains from SPONSOR_SCRIPTS config and add
+    # them to CSP.  This is the only way third-party sponsor scripts can
+    # load — CSP blocks everything else.  The domain extraction itself is
+    # validated (https:// or // prefix, no injection chars) before it
+    # reaches this point.
     from urllib.parse import urlparse
-    if config.AD_SCRIPTS:
+    if config.SPONSOR_SCRIPTS:
         import json, re
         try:
-            data = json.loads(config.AD_SCRIPTS)
+            data = json.loads(config.SPONSOR_SCRIPTS)
             for _placement, url in data.items():
                 if not isinstance(url, str):
                     continue
