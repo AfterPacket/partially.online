@@ -132,9 +132,10 @@ def api_status(db: Session = Depends(get_db)):
     total = db.query(CoalescedEvent).filter(
         CoalescedEvent.is_active.is_(True), CoalescedEvent.observed_start >= cut,
         CoalescedEvent.severity != "normal").count()
-    severe = db.query(CoalescedEvent).filter(
-        CoalescedEvent.is_active.is_(True), CoalescedEvent.severity == "severe",
-        CoalescedEvent.observed_start >= cut).count()
+    # Use country_status for the severe count so it matches the map:
+    # a country with 3+ significant events is escalated to severe.
+    cs = country_status(db)
+    severe = sum(d["active_events"] for d in cs.values() if d["status"] == "severe")
     # "Confirmed" = any independent corroboration tier (source cross-check,
     # probe, multi-source, or self-evident magnitude) — not just probes.
     confirmed = db.query(CoalescedEvent).filter(
@@ -201,7 +202,16 @@ def api_country(code: str, db: Session = Depends(get_db)):
         .order_by(CoalescedEvent.observed_start).all()
     )
     name   = active[0].country_name if active else (history[0].country_name if history else code)
-    status = active[0].severity     if active else "normal"
+    # Use country_status for the overall status so the detail panel matches
+    # the map: a country with 3+ significant events is escalated to severe.
+    cs = country_status(db)
+    entry = cs.get(code)
+    if entry:
+        status = entry["status"]
+    elif active:
+        status = active[0].severity
+    else:
+        status = "normal"
     daily: dict = {}
     for ev in history:
         day = ev.observed_start.strftime("%Y-%m-%d")
