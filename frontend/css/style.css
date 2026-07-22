@@ -15,6 +15,9 @@
   --accent:      #3b82f6;
   --header-h:    52px;
   --sidebar-w:   340px;
+  /* Shared inset for fixed bottom panels so they never overlap the sidebar.
+     Sidebar width + its 1px border. Update here if --sidebar-w changes. */
+  --panel-right: calc(var(--sidebar-w) + 1px);
 }
 
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; overflow: hidden; }
@@ -229,7 +232,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* No overflow:hidden — the event-list handles its own scroll (see below).
+     Clipping here is what made the fixed detail panel's bottom edge cut off
+     the sidebar's lower cards. Position+z-index keep the sidebar above the
+     fixed detail panel if their edges ever touch. */
+  position: relative;
+  z-index: 2100;
 }
 
 .sidebar-head {
@@ -253,6 +261,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 .event-list {
   flex: 1;
+  /* min-height:0 is required for a flex child to shrink below its content
+     size so overflow-y:auto actually scrolls instead of pushing the footer
+     out of the fixed-height sidebar. */
+  min-height: 0;
   overflow-y: auto;
   padding: 8px 0;
 }
@@ -402,7 +414,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   position: fixed;
   bottom: 0;
   left: 0;
-  right: var(--sidebar-w);
+  /* Stay clear of the sidebar: use the shared --panel-right (sidebar width
+     + 1px border) so the panel's right edge can never slide under the
+     sidebar regardless of resolution/zoom. */
+  right: var(--panel-right);
   background: var(--bg2);
   border-top: 1px solid var(--border);
   border-right: 1px solid var(--border);
@@ -512,7 +527,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   position: fixed;
   bottom: 0;
   left: 0;
-  right: var(--sidebar-w);
+  right: var(--panel-right);
   background: rgba(8, 24, 12, 0.96);
   border-top: 1px solid rgba(34,197,94,0.25);
   z-index: 1500;
