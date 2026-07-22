@@ -124,7 +124,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .sponsor-slot-sidebar {
   margin: 8px 0;
-  min-height: 250px;
+  /* No min-height: an unfilled active slot must collapse to ~0 instead of
+     reserving a 250px hole that squeezes the event-list into a scroll strip
+     and clips the sidebar footer. When an ad actually fills, the slot
+     expands to the ad's natural height. */
+  flex-shrink: 0;
 }
 .sponsor-slot-footer {
   max-width: 728px;
@@ -678,5 +682,7 @@ path.leaflet-interactive:focus-visible { outline: none; }
 
   /* Ads go full width on mobile. */
   .sponsor-slot-header, .sponsor-slot-footer { max-width: 100%; }
-  .sponsor-slot-sidebar { min-height: 100px; }
+  /* No min-height on mobile either — same reason as desktop: an unfilled
+     active slot must not reserve space and squeeze the event list. */
+  .sponsor-slot-sidebar { min-height: 0; }
 }
