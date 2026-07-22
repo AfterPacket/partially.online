@@ -5,9 +5,11 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
+from html import escape as _esc
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -453,5 +455,69 @@ def api_admin_banner_delete(banner_id: int, db: Session = Depends(get_db)):
 
 # ── Static frontend ───────────────────────────────────────────────────────────
 _fe = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+_INDEX_PATH = os.path.join(_fe, "index.html")
+
+_SITE_TITLE_DEFAULT = "Internet Outage Monitor"
+_SITE_DESC_DEFAULT = (
+    "Live map of internet outages, shutdowns and censorship worldwide — "
+    "coalesced from OONI, IODA and Cloudflare Radar measurements."
+)
+
+
+def _render_meta() -> str:
+    """Build the <head> SEO/social tags from env (see Config.SITE_*).
+
+    Crawlers and social link-unfurlers read the served markup and do NOT run
+    our JS, so these must be injected server-side rather than set from app.js.
+    Every interpolated value is HTML-escaped.
+    """
+    title = config.SITE_TITLE or _SITE_TITLE_DEFAULT
+    desc  = config.SITE_DESCRIPTION or _SITE_DESC_DEFAULT
+    url   = config.PUBLIC_SITE_URL or ""
+    image = config.SITE_OG_IMAGE or ""
+    # Social platforms want an absolute og:image; join a site-relative path
+    # with the known base URL when we can.
+    if image and url and image.startswith("/"):
+        image = url.rstrip("/") + image
+
+    t, d = _esc(title), _esc(desc)
+    card = "summary_large_image" if image else "summary"
+    tags = [f"<title>{t}</title>",
+            f'<meta name="description" content="{d}"/>']
+    if url:
+        tags.append(f'<link rel="canonical" href="{_esc(url)}"/>')
+    tags += ['<meta property="og:type" content="website"/>',
+             f'<meta property="og:site_name" content="{t}"/>',
+             f'<meta property="og:title" content="{t}"/>',
+             f'<meta property="og:description" content="{d}"/>']
+    if url:
+        tags.append(f'<meta property="og:url" content="{_esc(url)}"/>')
+    tags += [f'<meta name="twitter:card" content="{card}"/>',
+             f'<meta name="twitter:title" content="{t}"/>',
+             f'<meta name="twitter:description" content="{d}"/>']
+    if image:
+        im = _esc(image)
+        tags += [f'<meta property="og:image" content="{im}"/>',
+                 f'<meta name="twitter:image" content="{im}"/>']
+    return "\n  ".join(tags)
+
+
+def _index_html() -> str:
+    """index.html with the <!--META--> placeholder replaced by env-driven tags."""
+    try:
+        with open(_INDEX_PATH, encoding="utf-8") as fh:
+            doc = fh.read()
+    except OSError:
+        return f"<!doctype html><title>{_esc(_SITE_TITLE_DEFAULT)}</title>"
+    return doc.replace("<!--META-->", _render_meta())
+
+
 if os.path.isdir(_fe):
+    # Serve "/" and /index.html through the injection layer so the meta tags
+    # are present in the markup; StaticFiles still handles css/js/other assets.
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
+    def serve_index() -> HTMLResponse:
+        return HTMLResponse(_index_html())
+
     app.mount("/", StaticFiles(directory=_fe, html=True), name="static")

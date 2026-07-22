@@ -62,6 +62,17 @@ class Config:
     # frontend Share button), e.g. "#PartiallyOnline". Leading # optional.
     SITE_HASHTAG = os.getenv("SITE_HASHTAG", "")
 
+    # ── Frontend SEO / social meta ────────────────────────────────────────────
+    # Injected server-side into the index.html <head> (see backend/main.py)
+    # so search crawlers and link-unfurlers — which read the served markup and
+    # do NOT run our JS — get real tags. PUBLIC_SITE_URL above is reused as the
+    # canonical / og:url. Sensible defaults apply when these are blank.
+    SITE_TITLE       = os.getenv("SITE_TITLE", "")
+    SITE_DESCRIPTION = os.getenv("SITE_DESCRIPTION", "")
+    # Absolute URL, or a site-relative path (joined with PUBLIC_SITE_URL), of
+    # the social preview image used for og:image / twitter:image.
+    SITE_OG_IMAGE    = os.getenv("SITE_OG_IMAGE", "")
+
     # ── Sponsor placements ────────────────────────────────────────────────────
     # Only placement parameters (IDs, URLs) — never raw HTML/scripts.
     # The frontend constructs tags from these validated values, so there
