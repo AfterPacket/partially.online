@@ -98,7 +98,7 @@ def get_country_status(db: Session) -> dict:
     status: dict = {}
     for ev in events:
         cc = ev.country_code
-        if cc not in status or ev.severity_score > status[cc]["score"]:
+        if cc not in status:
             ts = ev.updated_at or ev.created_at
             status[cc] = {
                 "code": cc,
@@ -108,7 +108,20 @@ def get_country_status(db: Session) -> dict:
                 "active_events": 0,
                 "last_updated": ts.isoformat(),
             }
+        
+        if ev.severity_score > status[cc]["score"]:
+            status[cc]["status"] = ev.severity
+            status[cc]["score"] = ev.severity_score
+            ts = ev.updated_at or ev.created_at
+            status[cc]["last_updated"] = ts.isoformat()
+            
         status[cc]["active_events"] += 1
+
+    # Escalate severity based on the number of active events
+    for cc, data in status.items():
+        if data["active_events"] >= 3 and data["status"] in ("significant", "severe"):
+            data["status"] = "severe"
+
     return status
 
 

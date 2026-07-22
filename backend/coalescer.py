@@ -464,14 +464,29 @@ def country_status(db: Session, now=None, window_hours=24) -> dict:
     status: dict = {}
     for ce in rows:
         cc = ce.country_code
-        if cc not in status or ce.severity_score > status[cc]["score"]:
+        if cc not in status:
             ts = ce.updated_at or ce.observed_start
             status[cc] = {
                 "code": cc, "name": ce.country_name, "status": ce.severity,
                 "score": ce.severity_score, "active_events": 0,
                 "last_updated": (ts.isoformat() + "Z") if ts else None,
             }
+        
+        # Track the worst single event
+        if ce.severity_score > status[cc]["score"]:
+            status[cc]["status"] = ce.severity
+            status[cc]["score"] = ce.severity_score
+            ts = ce.updated_at or ce.observed_start
+            status[cc]["last_updated"] = (ts.isoformat() + "Z") if ts else None
+        
         status[cc]["active_events"] += 1
+
+    # Escalate severity based on the number of active events
+    # If a country has multiple significant/severe events, it's considered 'severe' overall
+    for cc, data in status.items():
+        if data["active_events"] >= 3 and data["status"] in ("significant", "severe"):
+            data["status"] = "severe"
+            
     return status
 
 
