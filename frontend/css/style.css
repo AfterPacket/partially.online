@@ -21,6 +21,12 @@
 }
 
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; overflow: hidden; }
+/* body is a flex column so banners / header sponsor slot / header take their
+   natural height and .layout fills the rest. A hardcoded calc(100vh - header)
+   on .layout clipped the sidebar bottom whenever the header sponsor ad or a
+   banner added height above it (body has overflow:hidden, so it overflowed
+   off-screen instead of pushing layout shorter). */
+body { display: flex; flex-direction: column; }
 
 /* ── Header ──────────────────────────────────────────────────── */
 .header {
@@ -107,6 +113,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .banner-stack {
   position: relative;
   z-index: 100;
+  flex-shrink: 0;   /* body is a flex column — keep natural height */
 }
 
 /* ── Ad slots ─────────────────────────────────────────────────── */
@@ -119,6 +126,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .sponsor-slot.sponsor-slot-active {
   display: block;
+  flex-shrink: 0;   /* body/header flex column — keep natural height, don't squeeze */
 }
 .sponsor-slot-header {
   max-width: 728px;
@@ -188,7 +196,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 /* ── Layout ──────────────────────────────────────────────────── */
 .layout {
   display: flex;
-  height: calc(100vh - var(--header-h));
+  /* flex:1 fills whatever viewport height remains after banners / header ad /
+     header (body is a flex column). min-height:0 lets it shrink so the inner
+     map/sidebar can scroll instead of overflowing. */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
