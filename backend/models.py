@@ -34,6 +34,12 @@ class OutageEvent(Base):
     probe_confirmed = Column(Boolean, default=False)
     probe_note      = Column(Text,    nullable=True)
 
+    # Source cross-check: True once IODA's curated /outages/events feed
+    # (post-processed, persistent — unlike the raw alerts feed, which IODA
+    # retracts after reprocessing) publishes an outage overlapping this
+    # observation. See backend/verifier.py.
+    source_confirmed = Column(Boolean, default=False)
+
     # Resolution tracking
     resolved    = Column(Boolean,  default=False)   # True once the outage ends
     resolved_at = Column(DateTime, nullable=True)   # when it was marked resolved
@@ -91,6 +97,15 @@ class CoalescedEvent(Base):
     resolved        = Column(Boolean, default=False)
     resolved_at     = Column(DateTime, nullable=True)
     probe_confirmed = Column(Boolean, default=False)
+
+    # Two-tier confidence: what (if anything) independently corroborates this
+    # event beyond the raw source alert that created it.
+    #   source       -> IODA's curated outage feed published a matching outage
+    #   probe        -> our active probing independently confirmed it
+    #   multi-source -> ≥2 independent sources contributed observations
+    #   magnitude    -> the drop itself is self-evident (>= severe threshold)
+    #   unconfirmed  -> raw signal only; may be retracted by the source later
+    confirmation = Column(String(20), default="unconfirmed")
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow,

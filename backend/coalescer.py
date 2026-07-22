@@ -88,6 +88,63 @@ def classify_severity(actual, baseline, source_severity, source_score):
     return sev, float(score), None
 
 
+def _drop_pct(actual, baseline):
+    if actual is None or baseline is None or baseline <= 0:
+        return None
+    return max(0.0, (baseline - actual) / baseline * 100.0)
+
+
+def effective_event_type(event_type, drop_pct):
+    """
+    "shutdown" claims (near-)total loss of connectivity, but sources assign it
+    by datasource, not magnitude — IODA labels ANY bgp-datasource alert a
+    shutdown, even a 142->134 (~6%) wobble it later retracts (the Gaza Strip
+    false-"shutdown" case, confirmed live). When we can measure the drop and it
+    is below the severe threshold, downgrade to the generic "disruption" so the
+    label matches the evidence. Like classify_severity, this only ever
+    downgrades: it never upgrades a type, and never second-guesses one when no
+    baseline exists to judge it by (probe/Cloudflare evidence has no signal
+    numbers but genuinely means "unreachable").
+    """
+    if event_type == "shutdown" and drop_pct is not None and drop_pct < SEVERE_PCT:
+        return "disruption"
+    return event_type
+
+
+def _confirmation(source_confirmed, probe_confirmed, n_sources, drop_pct):
+    """
+    Two-tier confidence: what independently corroborates this event beyond the
+    raw source alert that created it? Raw feeds (IODA /outages/alerts) are
+    noisy and get RETRACTED after reprocessing, so a raw alert alone is a
+    lead, not a verified outage. Ranked strongest-first:
+
+      source       -> the source's own curated/verified feed published a
+                      matching outage (persistent + externally checkable)
+      probe        -> our active probing independently confirmed it
+      multi-source -> >=2 independent sources observed the same condition
+      magnitude    -> the drop itself is self-evident (>= severe threshold);
+                      a >=50% signal collapse isn't measurement noise
+      unconfirmed  -> raw signal only; may later prove a false positive
+    """
+    if source_confirmed:
+        return "source"
+    if probe_confirmed:
+        return "probe"
+    if n_sources > 1:
+        return "multi-source"
+    if drop_pct is not None and drop_pct >= SEVERE_PCT:
+        return "magnitude"
+    return "unconfirmed"
+
+
+_CONFIRMATION_TEXT = {
+    "source":       "Corroborated by the source's verified outage feed.",
+    "probe":        "Independently confirmed by active probing.",
+    "multi-source": "Corroborated by multiple independent sources.",
+    "magnitude":    "Signal collapse is self-evident (>= {pct:g}% drop).",
+}
+
+
 # ── Interval merging (pure, deterministic — the heart of coalescing) ──────────
 
 class _Sample:
@@ -195,16 +252,18 @@ def _summarize_group(group):
     the worst (highest re-classified severity, then largest drop) member as
     representative and preserving its reachable-vs-baseline numbers.
     """
-    best            = None
-    sources         = set()
-    probe_confirmed = False
-    country_name    = None
+    best             = None
+    sources          = set()
+    probe_confirmed  = False
+    source_confirmed = False
+    country_name     = None
     for s in group:
         r = s.row
         if r.source:
             sources.add(r.source)
-        probe_confirmed = probe_confirmed or bool(getattr(r, "probe_confirmed", False))
-        country_name    = country_name or r.country_name
+        probe_confirmed  = probe_confirmed or bool(getattr(r, "probe_confirmed", False))
+        source_confirmed = source_confirmed or bool(getattr(r, "source_confirmed", False))
+        country_name     = country_name or r.country_name
         sev, score, drop = classify_severity(
             r.actual_value, r.baseline_value, r.severity, r.severity_score)
         rank = _SEV_RANK.get(sev, 1)
@@ -218,6 +277,8 @@ def _summarize_group(group):
         "source": r.source, "source_url": r.source_url, "title": r.title,
         "sources": ",".join(sorted(sources)),
         "probe_confirmed": probe_confirmed,
+        "confirmation": _confirmation(source_confirmed, probe_confirmed,
+                                       len(sources), drop),
         "country_name": country_name,
     }
 
@@ -233,8 +294,16 @@ def _describe(fields, observed_start, observed_end, is_active, sample_count):
         sig += "."
     src = "/".join(s.upper() for s in fields["sources"].split(",") if s)
     n   = sample_count
+    conf = fields.get("confirmation", "unconfirmed")
+    if conf in _CONFIRMATION_TEXT:
+        conf_text = " " + _CONFIRMATION_TEXT[conf].format(pct=SEVERE_PCT)
+    elif is_active:
+        conf_text = " Unconfirmed — raw signal only, awaiting independent corroboration."
+    else:
+        conf_text = (" Unconfirmed — no independent corroboration was observed; "
+                     "possible false positive.")
     return (f"{src}: {label}. Coalesced from {n} "
-            f"observation{'s' if n != 1 else ''}.{sig}")
+            f"observation{'s' if n != 1 else ''}.{sig}{conf_text}")
 
 
 class _LabelView:
@@ -282,6 +351,7 @@ def _apply(ce, key, fields, observed_start, observed_end, is_active, sample_coun
     ce.source         = fields["source"]
     ce.source_url     = fields["source_url"]
     ce.probe_confirmed = fields["probe_confirmed"]
+    ce.confirmation   = fields["confirmation"]
     ce.title          = _title(key, fields)
     ce.observed_start = observed_start
     ce.observed_end   = observed_end
@@ -327,11 +397,17 @@ def recompute(db: Session, now=None, window_days=None):
         last = r.end_time or r.resolved_at or r.updated_at or start
         if last < start:
             last = start
-        by_key[(r.country_code, r.region_name, r.event_type)].append(_Sample(start, last, r))
+        etype = effective_event_type(r.event_type, _drop_pct(r.actual_value, r.baseline_value))
+        by_key[(r.country_code, r.region_name, etype)].append(_Sample(start, last, r))
 
     existing_by_key = defaultdict(list)
     for ce in db.query(CoalescedEvent).filter(CoalescedEvent.observed_start >= since).all():
-        existing_by_key[(ce.country_code, ce.region_name, ce.event_type)].append(ce)
+        # Normalize the stored type the same way the raw keys are normalized,
+        # so a coalesced "shutdown" row written before the type downgrade
+        # existed re-matches its (now "disruption") group and is re-typed in
+        # place, instead of being orphaned while a duplicate row is created.
+        etype = effective_event_type(ce.event_type, ce.drop_pct)
+        existing_by_key[(ce.country_code, ce.region_name, etype)].append(ce)
 
     touched = set()
     for key, samples in by_key.items():

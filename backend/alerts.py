@@ -193,6 +193,14 @@ async def check_and_send_alerts(db: Session, event_ids: list):
         ev = db.query(CoalescedEvent).filter(CoalescedEvent.id == eid).first()
         if not ev or ev.severity not in ("significant", "severe"):
             continue
+        # Never publicly announce an event nothing corroborates: raw source
+        # alerts get retracted after reprocessing (see backend/verifier.py),
+        # and a post about a retracted alert can't be walked back. The ids
+        # are re-offered every cycle, so the open post simply fires on the
+        # first cycle where corroboration (source/probe/multi-source/
+        # magnitude) exists — a real collapse is magnitude-confirmed at once.
+        if (ev.confirmation or "unconfirmed") == "unconfirmed":
+            continue
         for channel, send in channels:
             already = db.query(CoalescedAlert).filter(
                 CoalescedAlert.event_id == eid,

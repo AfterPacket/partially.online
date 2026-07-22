@@ -109,6 +109,10 @@ def _e(ev: CoalescedEvent) -> dict:
         "ongoing":         bool(ev.is_active),
         "is_active":       bool(ev.is_active),
         "probe_confirmed": bool(ev.probe_confirmed),
+        # Two-tier confidence (see coalescer._confirmation):
+        # source | probe | multi-source | magnitude | unconfirmed.
+        "confirmation":    ev.confirmation or "unconfirmed",
+        "confirmed":       (ev.confirmation or "unconfirmed") != "unconfirmed",
         "resolved":        bool(ev.resolved),
         "resolved_at":     _iso(ev.resolved_at),
     }
@@ -129,8 +133,12 @@ def api_status(db: Session = Depends(get_db)):
     severe = db.query(CoalescedEvent).filter(
         CoalescedEvent.is_active.is_(True), CoalescedEvent.severity == "severe",
         CoalescedEvent.observed_start >= cut).count()
+    # "Confirmed" = any independent corroboration tier (source cross-check,
+    # probe, multi-source, or self-evident magnitude) — not just probes.
     confirmed = db.query(CoalescedEvent).filter(
-        CoalescedEvent.is_active.is_(True), CoalescedEvent.probe_confirmed.is_(True),
+        CoalescedEvent.is_active.is_(True),
+        CoalescedEvent.confirmation.isnot(None),
+        CoalescedEvent.confirmation != "unconfirmed",
         CoalescedEvent.observed_start >= cut).count()
     return {
         "status":        "ok",

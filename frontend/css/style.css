@@ -486,8 +486,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .hist-place { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-values { color: var(--text-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hist-state { white-space: nowrap; font-weight: 600; }
-.hist-state.is-active   { color: var(--severe); }
-.hist-state.is-resolved { color: #22c55e; }
+.hist-state.is-active      { color: var(--severe); }
+.hist-state.is-resolved    { color: #22c55e; }
+.hist-state.is-unconfirmed { color: var(--text-dim); }
 
 /* Detail event rows */
 .detail-ev {
@@ -588,6 +589,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .rc-country  { font-size: 13px; font-weight: 600; color: var(--text); }
 .rc-type     { font-size: 11px; color: var(--text-dim); text-transform: capitalize; margin-top: 2px; }
 .rc-time     { font-size: 11px; color: #22c55e; margin-top: 4px; }
+.rc-time.rc-unconfirmed { color: var(--text-dim); }
 .rc-duration { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
 
 /* ── Leaflet overrides ───────────────────────────────────────── */

@@ -20,23 +20,30 @@ def init_db():
 
 def _migrate():
     """Add any missing columns to existing tables (idempotent)."""
-    new_cols = [
-        ("probe_confirmed", "BOOLEAN DEFAULT 0"),
-        ("probe_note",      "TEXT"),
-        ("resolved",        "BOOLEAN DEFAULT 0"),
-        ("resolved_at",     "DATETIME"),
-        ("region_name",     "VARCHAR(100)"),
-        ("actual_value",    "FLOAT"),
-        ("baseline_value",  "FLOAT"),
-    ]
+    new_cols = {
+        "outage_events": [
+            ("probe_confirmed",  "BOOLEAN DEFAULT 0"),
+            ("probe_note",       "TEXT"),
+            ("resolved",         "BOOLEAN DEFAULT 0"),
+            ("resolved_at",      "DATETIME"),
+            ("region_name",      "VARCHAR(100)"),
+            ("actual_value",     "FLOAT"),
+            ("baseline_value",   "FLOAT"),
+            ("source_confirmed", "BOOLEAN DEFAULT 0"),
+        ],
+        "coalesced_events": [
+            ("confirmation", "VARCHAR(20) DEFAULT 'unconfirmed'"),
+        ],
+    }
     with engine.connect() as conn:
-        for col, typedef in new_cols:
-            try:
-                conn.execute(text(f"SELECT {col} FROM outage_events LIMIT 1"))
-            except Exception:
-                conn.execute(text(f"ALTER TABLE outage_events ADD COLUMN {col} {typedef}"))
-                conn.commit()
-                log.info(f"[db] Added column outage_events.{col}")
+        for table, cols in new_cols.items():
+            for col, typedef in cols:
+                try:
+                    conn.execute(text(f"SELECT {col} FROM {table} LIMIT 1"))
+                except Exception:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
+                    conn.commit()
+                    log.info(f"[db] Added column {table}.{col}")
 
 
 def get_db():

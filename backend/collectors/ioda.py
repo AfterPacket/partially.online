@@ -68,7 +68,30 @@ class IODACollector(BaseCollector):
             return None
         sev, score = _SEV.get(level, ("minor", 25))
         ds    = alert.get("datasource", "")
-        etype = "shutdown" if "bgp" in ds else "disruption"
+
+        def _num(x):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return None
+
+        actual   = _num(alert.get("value"))
+        baseline = _num(alert.get("historyValue"))
+
+        # IODA assigns "critical" by condition (any dip below 99% of median),
+        # not magnitude — so a bgp-datasource alert for a 142->134 wobble would
+        # read as a "shutdown" if we keyed the type on datasource alone
+        # (confirmed live: the Gaza Strip false-"shutdown", later retracted by
+        # IODA itself). Only call it a shutdown when the signal actually
+        # collapsed; keep datasource semantics when no numbers are available.
+        # Mirrors coalescer.effective_event_type, which also guards history.
+        drop = None
+        if actual is not None and baseline is not None and baseline > 0:
+            drop = max(0.0, (baseline - actual) / baseline * 100.0)
+        etype = "disruption"
+        if "bgp" in ds and (drop is None or drop >= config.SEVERITY_SEVERE_PCT):
+            etype = "shutdown"
+
         start = datetime.datetime.utcfromtimestamp(
             alert.get("time", since.timestamp())
         )
@@ -80,21 +103,20 @@ class IODACollector(BaseCollector):
             region_name = entity.get("name", "")
             short       = SHORT_NAMES.get(cc)
             location    = f"{region_name}, {short or country_nm}"
+            # Link to the region entity's own page — region alerts don't
+            # necessarily move the country-level aggregate, so the country
+            # page routinely shows nothing for a region-scoped event.
+            source_url  = f"https://ioda.inetintel.cc.gatech.edu/region/{entity.get('code', '')}"
         else:
             cc          = entity.get("code", "").upper()
             country_nm  = entity.get("name", cc)
             region_name = None
             short       = SHORT_NAMES.get(cc)
             location    = short or country_nm
+            source_url  = f"https://ioda.inetintel.cc.gatech.edu/country/{cc}"
 
         if not cc:
             return None
-
-        def _num(x):
-            try:
-                return float(x)
-            except (TypeError, ValueError):
-                return None
 
         return {
             "country_code":   cc,
@@ -110,9 +132,9 @@ class IODACollector(BaseCollector):
             "severity":       sev,
             "severity_score": float(score),
             "source":         "ioda",
-            "source_url":     f"https://ioda.inetintel.cc.gatech.edu/country/{cc}",
-            "actual_value":   _num(alert.get("value")),
-            "baseline_value": _num(alert.get("historyValue")),
+            "source_url":     source_url,
+            "actual_value":   actual,
+            "baseline_value": baseline,
             "start_time":     start,
             "end_time":       None,
             "is_active":      True,

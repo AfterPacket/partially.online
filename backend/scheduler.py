@@ -13,6 +13,7 @@ from .collectors.ooni import OONICollector
 from .collectors.probe import ProbeCollector
 from .config import config
 from .database import SessionLocal
+from .verifier import crosscheck_ioda
 
 log = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
@@ -68,6 +69,10 @@ async def _run_api_collection():
         expire_old_events(db)
         upsert_events(db, all_events)
         check_resolutions(db, seen_keys=seen)
+        # Cross-check raw IODA rows against IODA's curated outage feed BEFORE
+        # coalescing, so this cycle's derived events already carry any
+        # confirmation the curated feed has published (never raises).
+        confirmed_n = await crosscheck_ioda(db)
         # Derived layer: coalesce raw observations into sustained events, then
         # post open/close notices on THOSE (at most once each, via dedup).
         active_ids, resolved_ids = recompute(db)
@@ -75,6 +80,7 @@ async def _run_api_collection():
         await check_and_send_resolved_alerts(db, resolved_ids)
         log.info(f"API cycle done: {len(all_events)} raw obs, "
                  f"{len(active_ids)} active alert-worthy, {len(resolved_ids)} resolved, "
+                 f"{confirmed_n} source-confirmed, "
                  f"{len(seen)} (country, region) pairs seen")
     finally:
         db.close()

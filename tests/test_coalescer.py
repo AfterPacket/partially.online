@@ -16,7 +16,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.coalescer import (CLEAR_HYSTERESIS, GAP_MERGE, classify_severity,
-                               duration_label, plan_events, recompute)
+                               duration_label, effective_event_type,
+                               plan_events, recompute)
 from backend.models import Base, CoalescedEvent, OutageEvent
 
 DAY   = dt.datetime(2026, 7, 22)
@@ -108,10 +109,33 @@ def test_no_baseline_keeps_source_severity():
     assert drop is None
 
 
+# ── Event type is downgraded by drop magnitude, like severity ────────────────
+
+def test_small_dip_is_not_a_shutdown():
+    # The Gaza Strip case: IODA labels any bgp alert "shutdown", but a
+    # 142->134 (5.6%) dip is not a shutdown.
+    assert effective_event_type("shutdown", 5.6) == "disruption"
+
+
+def test_real_collapse_keeps_shutdown_type():
+    assert effective_event_type("shutdown", 95.0) == "shutdown"
+
+
+def test_no_drop_data_keeps_source_type():
+    # No baseline to judge by (probe/Cloudflare evidence) -> type preserved.
+    assert effective_event_type("shutdown", None) == "shutdown"
+
+
+def test_non_shutdown_types_pass_through():
+    assert effective_event_type("censorship", 1.0) == "censorship"
+    assert effective_event_type("disruption", 1.0) == "disruption"
+
+
 # ── DB-level: recompute is idempotent and collapses fragments ────────────────
 
 def _seed_fragments(session, n, actual=100, baseline=400, source="ioda",
-                    etype="disruption", start=START, step=STEP):
+                    etype="disruption", start=START, step=STEP,
+                    probe_confirmed=False, source_confirmed=False):
     """Seed n raw OutageEvent fragments (as if resolved+recreated each cycle)."""
     for i in range(n):
         t = start + step * i
@@ -123,6 +147,7 @@ def _seed_fragments(session, n, actual=100, baseline=400, source="ioda",
             actual_value=actual, baseline_value=baseline,
             start_time=t, end_time=t, updated_at=t,
             is_active=(i == n - 1), resolved=(i < n - 1),
+            probe_confirmed=probe_confirmed, source_confirmed=source_confirmed,
         ))
     session.commit()
 
@@ -163,6 +188,142 @@ def test_tiny_dip_recompute_makes_no_severe_event():
     assert ce.severity != "severe"
 
 
+def test_small_dip_shutdown_recomputes_as_disruption():
+    # Raw rows labeled "shutdown" (IODA bgp datasource) with a 5.6% drop must
+    # coalesce into a "disruption" event, not a "shutdown".
+    session = _session()
+    _seed_fragments(session, 3, actual=134, baseline=142, etype="shutdown")
+    recompute(session, now=START + dt.timedelta(hours=1, minutes=20))
+    ce = session.query(CoalescedEvent).one()
+    assert ce.event_type == "disruption"
+    assert ce.severity == "minor"
+
+
+def test_collapse_shutdown_recomputes_as_shutdown():
+    session = _session()
+    _seed_fragments(session, 3, actual=20, baseline=400, etype="shutdown")
+    recompute(session, now=START + dt.timedelta(hours=1, minutes=20))
+    ce = session.query(CoalescedEvent).one()
+    assert ce.event_type == "shutdown"
+    assert ce.severity == "severe"
+
+
+def test_existing_shutdown_row_is_retyped_not_duplicated():
+    # A coalesced "shutdown" row written before the type-downgrade fix must be
+    # re-matched and re-typed in place — not orphaned next to a duplicate.
+    session = _session()
+    _seed_fragments(session, 3, actual=134, baseline=142, etype="shutdown")
+    session.add(CoalescedEvent(
+        country_code="XX", region_name=None, event_type="shutdown",
+        country_name="Xland", severity="minor", severity_score=10.1,
+        drop_pct=5.6, actual_value=134, baseline_value=142,
+        sources="ioda", source="ioda", source_url="https://example/x",
+        title="Internet disruption detected in Xland", description="d",
+        observed_start=START, observed_end=START + dt.timedelta(hours=1),
+        sample_count=3, is_active=True, resolved=False,
+    ))
+    session.commit()
+    recompute(session, now=START + dt.timedelta(hours=1, minutes=20))
+    rows = session.query(CoalescedEvent).all()
+    assert len(rows) == 1
+    assert rows[0].event_type == "disruption"
+
+
+# ── Two-tier confidence: confirmation is derived and reported honestly ──────
+
+def test_severe_collapse_is_magnitude_confirmed():
+    session = _session()
+    _seed_fragments(session, 3, actual=20, baseline=400)     # 95% collapse
+    recompute(session, now=START + dt.timedelta(hours=1, minutes=20))
+    ce = session.query(CoalescedEvent).one()
+    assert ce.confirmation == "magnitude"
+    assert "self-evident" in ce.description
+
+
+def test_small_dip_is_unconfirmed_and_says_so():
+    session = _session()
+    _seed_fragments(session, 3, actual=134, baseline=142)    # 5.6% dip
+    # Active: awaiting corroboration.
+    recompute(session, now=START + dt.timedelta(hours=1, minutes=20))
+    ce = session.query(CoalescedEvent).one()
+    assert ce.confirmation == "unconfirmed"
+    assert "awaiting independent corroboration" in ce.description
+    # Resolved without corroboration: flagged as possible false positive,
+    # never presented as a verified outage that ended.
+    recompute(session, now=START + dt.timedelta(hours=3))
+    ce = session.query(CoalescedEvent).one()
+    assert ce.resolved is True
+    assert ce.confirmation == "unconfirmed"
+    assert "possible false positive" in ce.description
+
+
+def test_source_crosscheck_beats_other_tiers():
+    session = _session()
+    _seed_fragments(session, 3, actual=20, baseline=400,
+                    probe_confirmed=True, source_confirmed=True)
+    recompute(session, now=START + dt.timedelta(hours=1, minutes=20))
+    ce = session.query(CoalescedEvent).one()
+    assert ce.confirmation == "source"                       # strongest tier wins
+    assert "verified outage feed" in ce.description
+
+
+def test_probe_confirmation_tier():
+    session = _session()
+    _seed_fragments(session, 3, actual=134, baseline=142, probe_confirmed=True)
+    recompute(session, now=START + dt.timedelta(hours=1, minutes=20))
+    ce = session.query(CoalescedEvent).one()
+    assert ce.confirmation == "probe"
+
+
+# ── Verifier: curated-feed parsing and conservative matching ────────────────
+
+def test_parse_curated_country_and_region():
+    from backend.verifier import parse_curated
+    entries = [
+        {"location": "country/PS", "start": 1753160100, "duration": 1800,
+         "location_name": "Palestinian Territories"},
+        {"location": "region/1226", "start": 1753160100, "duration": 1800,
+         "location_name": "Gaza Strip"},
+    ]
+    country = parse_curated(entries)
+    assert country == [("PS", None,
+                        dt.datetime.utcfromtimestamp(1753160100),
+                        dt.datetime.utcfromtimestamp(1753161900))]
+    # Region entries are only usable when the per-country query context is
+    # passed in (CODF region entries don't carry their country).
+    region = parse_curated(entries, country_code="PS")
+    assert ("PS", "Gaza Strip",
+            dt.datetime.utcfromtimestamp(1753160100),
+            dt.datetime.utcfromtimestamp(1753161900)) in region
+
+
+def test_match_confirmations_requires_key_and_overlap():
+    from backend.verifier import match_confirmations
+
+    def _row(cc="PS", region="Gaza Strip", start=START, end=None):
+        return OutageEvent(country_code=cc, region_name=region,
+                           start_time=start, end_time=end or start,
+                           updated_at=end or start)
+
+    curated = [("PS", "Gaza Strip", START, START + dt.timedelta(minutes=30))]
+    slack   = dt.timedelta(hours=1)
+
+    overlapping = _row()
+    wrong_region = _row(region="West Bank")
+    wrong_cc     = _row(cc="MZ")                      # "Gaza" (Mozambique) etc.
+    too_late     = _row(start=START + dt.timedelta(hours=3),
+                        end=START + dt.timedelta(hours=4))
+    near_edge    = _row(start=START + dt.timedelta(minutes=80))   # inside slack
+
+    rows = [overlapping, wrong_region, wrong_cc, too_late, near_edge]
+    matched = match_confirmations(rows, curated, slack=slack)
+    assert overlapping in matched
+    assert near_edge in matched
+    assert wrong_region not in matched
+    assert wrong_cc not in matched
+    assert too_late not in matched
+
+
 # ── Criterion 4: one open post + one close post per coalesced event ──────────
 
 def test_mastodon_posts_open_and_close_at_most_once(monkeypatch):
@@ -174,6 +335,7 @@ def test_mastodon_posts_open_and_close_at_most_once(monkeypatch):
         severity="severe", severity_score=90, sources="ioda", source="ioda",
         source_url="https://example/x", title="Internet disruption detected in Xland",
         description="d", actual_value=100, baseline_value=400, drop_pct=75.0,
+        confirmation="magnitude",
         observed_start=START, observed_end=START + dt.timedelta(hours=3),
         sample_count=7, is_active=True, resolved=False,
     )
@@ -203,6 +365,43 @@ def test_mastodon_posts_open_and_close_at_most_once(monkeypatch):
     asyncio.run(alerts.check_and_send_resolved_alerts(session, [ce.id]))
     asyncio.run(alerts.check_and_send_resolved_alerts(session, [ce.id]))
     assert closes["n"] == 1
+
+
+def test_unconfirmed_event_is_never_posted(monkeypatch):
+    # An event nothing corroborates must not be announced publicly — raw
+    # source alerts get retracted, and a post can't be walked back.
+    import backend.alerts as alerts
+
+    session = _session()
+    ce = CoalescedEvent(
+        country_code="XX", country_name="Xland", event_type="disruption",
+        severity="significant", severity_score=55, sources="ioda", source="ioda",
+        source_url="https://example/x", title="t", description="d",
+        actual_value=280, baseline_value=400, drop_pct=30.0,
+        confirmation="unconfirmed",
+        observed_start=START, observed_end=START + dt.timedelta(hours=1),
+        sample_count=3, is_active=True, resolved=False,
+    )
+    session.add(ce)
+    session.commit()
+
+    sent = {"n": 0}
+
+    async def fake_send(ev, resolved=False):
+        sent["n"] += 1
+        return True
+
+    monkeypatch.setattr(alerts, "_channels", lambda: [("mastodon", fake_send)])
+    monkeypatch.setattr(alerts, "_POST_INTERVAL_SEC", 0)
+
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    assert sent["n"] == 0
+
+    # Once corroborated (e.g. the curated feed publishes it), it posts.
+    ce.confirmation = "source"
+    session.commit()
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    assert sent["n"] == 1
 
 
 def test_config_defaults_match_spec():

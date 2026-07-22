@@ -246,7 +246,7 @@ function renderEvents() {
         (ev.region_name ? '<span class="region-tag">' + esc(ev.region_name) + '</span>' : '')+
         '<span>' + esc(ev.country_name) + '</span>'+
         '<span class="source-tag">' + esc((ev.sources || ev.source || '').toUpperCase()) + '</span>'+
-        (ev.probe_confirmed ? '<span class="probe-tag">&#10003; confirmed</span>' : '')+
+        _confirmTagHTML(ev)+
         '<span class="ec-when" style="margin-left:auto">' + esc(when) + '</span>'+
         _shareBtnHTML(ev)+
       '</div>'+
@@ -258,6 +258,27 @@ function renderEvents() {
 // attributes, so the delegated click handler doesn't need to look the
 // event back up from allEvents (which doesn't hold resolved/detail-panel
 // events anyway).
+// Two-tier confidence tag (see backend coalescer._confirmation). A raw
+// source alert alone is a lead, not a verified outage — sources retract raw
+// alerts after reprocessing — so unconfirmed events are labeled as exactly
+// that instead of implying a verified incident.
+function _confirmTagHTML(ev) {
+  const c = ev.confirmation || (ev.probe_confirmed ? 'probe' : 'unconfirmed');
+  const CONF = {
+    'source':       ['&#10003; source verified',  'Corroborated by the source\u2019s curated outage feed'],
+    'probe':        ['&#10003; probe confirmed',  'Independently confirmed by active probing'],
+    'multi-source': ['&#10003; multi-source',     'Corroborated by multiple independent sources'],
+    'magnitude':    ['&#10003; signal collapse',  'Drop magnitude is self-evident (\u2265 severe threshold)'],
+  };
+  if (CONF[c]) {
+    return '<span class="probe-tag" title="' + CONF[c][1] + '">' + CONF[c][0] + '</span>';
+  }
+  const why = ev.region_name
+    ? 'Raw source signal only. National probes cannot verify a region-scoped outage; awaiting source corroboration.'
+    : 'Raw source signal only \u2014 awaiting independent corroboration (probe or source outage feed).';
+  return '<span class="probe-tag probe-unconfirmed" title="' + why + '">unconfirmed</span>';
+}
+
 function _shareBtnHTML(ev) {
   return '<button class="share-btn" data-title="' + esc(ev.title) + '" '+
     'data-severity="' + esc(ev.severity) + '" data-type="' + esc(ev.event_type) + '" '+
@@ -305,7 +326,7 @@ window.showCountryDetail = async function(code) {
         '<div class="dev-meta">'+
           '<span class="type-tag">' + esc(ev.event_type) + '</span>'+
           (ev.region_name ? '<span class="region-tag">' + esc(ev.region_name) + '</span>' : '')+
-          (ev.probe_confirmed ? '<span class="probe-tag">&#10003; probe confirmed</span>' : '<span class="probe-tag probe-unconfirmed">probe pending</span>')+
+          _confirmTagHTML(ev)+
           (ev.source_url && ev.source_url.startsWith('http') ? '<a class="dev-link" href="'+esc(ev.source_url)+'" target="_blank" rel="noopener">View source &rarr;</a>' : '')+
         '</div>'+
       '</div>'
@@ -349,9 +370,15 @@ async function loadCountryHistory(code) {
       ? Math.round(ev.actual_value) + ' vs ' + Math.round(ev.baseline_value)
       : '';
     // Honest window from the server: ongoing events show no fabricated span.
-    const windowText = ev.duration_label || '';
-    const stateText  = ev.ongoing ? 'Active' : 'Resolved';
-    const stateCls   = ev.ongoing ? 'is-active' : 'is-resolved';
+    const windowText  = ev.duration_label || '';
+    const unconfirmed = (ev.confirmation || 'unconfirmed') === 'unconfirmed';
+    // An unconfirmed event that came and went without any corroboration is
+    // labeled as such — "Resolved" would imply a verified outage happened.
+    const stateText = ev.ongoing
+      ? (unconfirmed ? 'Active \u00b7 unconfirmed' : 'Active')
+      : (unconfirmed ? 'Unconfirmed'               : 'Resolved');
+    const stateCls  = ev.ongoing ? 'is-active'
+                    : (unconfirmed ? 'is-unconfirmed' : 'is-resolved');
     return '<div class="hist-row">'+
       '<span class="hist-time">' + t + '</span>'+
       '<span class="hist-place">' + esc(place) + '</span>'+
@@ -504,12 +531,15 @@ function renderResolvedBar(events) {
   list.innerHTML = events.map(ev => {
     const resolvedAgo = ev.resolved_at ? _relTime(new Date(ev.resolved_at)) : '';
     // Server-provided honest window: "observed HH:MM–HH:MM UTC (span)".
-    const windowText = ev.duration_label || '';
+    const windowText  = ev.duration_label || '';
+    const unconfirmed = (ev.confirmation || 'unconfirmed') === 'unconfirmed';
     const place = ev.region_name ? ev.region_name + ', ' + ev.country_name : ev.country_name;
     return '<div class="resolved-card" data-country="' + esc(ev.country_code) + '">'+
       '<div class="rc-country">' + esc(place) + ' (' + esc(ev.country_code) + ')</div>'+
       '<div class="rc-type">' + esc(ev.event_type) + ' &mdash; ' + esc((ev.sources || ev.source || '').toUpperCase()) + '</div>'+
-      '<div class="rc-time">&#10003; Resolved ' + resolvedAgo + '</div>'+
+      (unconfirmed
+        ? '<div class="rc-time rc-unconfirmed">Ended ' + resolvedAgo + ' \u00b7 unconfirmed</div>'
+        : '<div class="rc-time">&#10003; Resolved ' + resolvedAgo + '</div>')+
       (windowText ? '<div class="rc-duration">' + esc(windowText) + '</div>' : '')+
       _shareBtnHTML(ev)+
     '</div>';
