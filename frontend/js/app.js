@@ -233,7 +233,9 @@ function renderEvents() {
   }
 
   el.innerHTML = filtered.map(ev => {
-    const time = ev.start_time ? _relTime(new Date(ev.start_time)) : '';
+    // Honest window from the server: live events read "ongoing since <UTC>",
+    // never a fabricated "Nm ago" duration derived from sample spacing.
+    const when = ev.duration_label || (ev.start_time ? _relTime(new Date(ev.start_time)) : '');
     return '<div class="event-card" data-country="' + esc(ev.country_code) + '">'+
       '<div class="ec-top">'+
         '<span class="sev-pip sev-' + safeClass(ev.severity) + '"></span>'+
@@ -243,9 +245,9 @@ function renderEvents() {
         '<span class="type-tag">' + esc(ev.event_type) + '</span>'+
         (ev.region_name ? '<span class="region-tag">' + esc(ev.region_name) + '</span>' : '')+
         '<span>' + esc(ev.country_name) + '</span>'+
-        '<span class="source-tag">' + esc(ev.source.toUpperCase()) + '</span>'+
+        '<span class="source-tag">' + esc((ev.sources || ev.source || '').toUpperCase()) + '</span>'+
         (ev.probe_confirmed ? '<span class="probe-tag">&#10003; confirmed</span>' : '')+
-        '<span style="margin-left:auto">' + time + '</span>'+
+        '<span class="ec-when" style="margin-left:auto">' + esc(when) + '</span>'+
         _shareBtnHTML(ev)+
       '</div>'+
     '</div>';
@@ -346,15 +348,15 @@ async function loadCountryHistory(code) {
     const values = (ev.actual_value != null && ev.baseline_value != null)
       ? Math.round(ev.actual_value) + ' vs ' + Math.round(ev.baseline_value)
       : '';
-    const end       = ev.end_time ? new Date(ev.end_time) : (ev.resolved_at ? new Date(ev.resolved_at) : new Date());
-    const dur       = ev.start_time ? _duration(new Date(ev.start_time), end) : '';
-    const stateText = ev.is_active ? 'Active' : 'Resolved';
-    const stateCls  = ev.is_active ? 'is-active' : 'is-resolved';
+    // Honest window from the server: ongoing events show no fabricated span.
+    const windowText = ev.duration_label || '';
+    const stateText  = ev.ongoing ? 'Active' : 'Resolved';
+    const stateCls   = ev.ongoing ? 'is-active' : 'is-resolved';
     return '<div class="hist-row">'+
       '<span class="hist-time">' + t + '</span>'+
       '<span class="hist-place">' + esc(place) + '</span>'+
       '<span class="hist-values">' + values + '</span>'+
-      '<span class="hist-state ' + stateCls + '">' + stateText + (dur ? ' &middot; ' + dur : '') + '</span>'+
+      '<span class="hist-state ' + stateCls + '">' + stateText + (windowText ? ' &middot; ' + esc(windowText) : '') + '</span>'+
     '</div>';
   }).join('');
 }
@@ -501,17 +503,14 @@ function renderResolvedBar(events) {
 
   list.innerHTML = events.map(ev => {
     const resolvedAgo = ev.resolved_at ? _relTime(new Date(ev.resolved_at)) : '';
-    const duration    = (ev.start_time && ev.end_time)
-      ? _duration(new Date(ev.start_time), new Date(ev.end_time))
-      : (ev.start_time && ev.resolved_at)
-      ? _duration(new Date(ev.start_time), new Date(ev.resolved_at))
-      : '';
+    // Server-provided honest window: "observed HH:MM–HH:MM UTC (span)".
+    const windowText = ev.duration_label || '';
     const place = ev.region_name ? ev.region_name + ', ' + ev.country_name : ev.country_name;
     return '<div class="resolved-card" data-country="' + esc(ev.country_code) + '">'+
       '<div class="rc-country">' + esc(place) + ' (' + esc(ev.country_code) + ')</div>'+
-      '<div class="rc-type">' + esc(ev.event_type) + ' &mdash; ' + esc(ev.source.toUpperCase()) + '</div>'+
+      '<div class="rc-type">' + esc(ev.event_type) + ' &mdash; ' + esc((ev.sources || ev.source || '').toUpperCase()) + '</div>'+
       '<div class="rc-time">&#10003; Resolved ' + resolvedAgo + '</div>'+
-      (duration ? '<div class="rc-duration">Duration: ' + duration + '</div>' : '')+
+      (windowText ? '<div class="rc-duration">' + esc(windowText) + '</div>' : '')+
       _shareBtnHTML(ev)+
     '</div>';
   }).join('');

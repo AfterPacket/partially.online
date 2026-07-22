@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .alerts import check_and_send_alerts, check_and_send_resolved_alerts
 from .analyzer import (check_resolutions, confirm_events_with_probe,
                        expire_old_events, get_country_status, upsert_events)
+from .coalescer import recompute
 from .collectors.cloudflare_radar import CloudflareRadarCollector
 from .collectors.ioda import IODACollector
 from .collectors.ooni import OONICollector
@@ -62,13 +63,19 @@ async def _run_api_collection():
 
     db = SessionLocal()
     try:
+        # Raw layer (untouched): ingest this cycle's per-source observations and
+        # run the existing raw resolution bookkeeping.
         expire_old_events(db)
-        new_ids = upsert_events(db, all_events)
-        resolved_ids = check_resolutions(db, seen_keys=seen)
-        await check_and_send_alerts(db, new_ids)
+        upsert_events(db, all_events)
+        check_resolutions(db, seen_keys=seen)
+        # Derived layer: coalesce raw observations into sustained events, then
+        # post open/close notices on THOSE (at most once each, via dedup).
+        active_ids, resolved_ids = recompute(db)
+        await check_and_send_alerts(db, active_ids)
         await check_and_send_resolved_alerts(db, resolved_ids)
-        log.info(f"API cycle done: {len(all_events)} raw, {len(new_ids)} new, "
-                 f"{len(resolved_ids)} resolved, {len(seen)} (country, region) pairs seen")
+        log.info(f"API cycle done: {len(all_events)} raw obs, "
+                 f"{len(active_ids)} active alert-worthy, {len(resolved_ids)} resolved, "
+                 f"{len(seen)} (country, region) pairs seen")
     finally:
         db.close()
 
@@ -96,7 +103,13 @@ async def _run_probe_collection():
             # One session spans probing (persists belief per round) and the
             # resulting event confirmation/resolution.
             results = await col.probe_countries(db, country_codes=active_ccs)
-            resolved_ids = confirm_events_with_probe(db, results)
+            # Probe confirmation annotates/resolves the RAW layer only; the
+            # coalescer owns actual open/close via hysteresis. Re-derive and
+            # alert off the coalesced layer so a single "up" probe can't close
+            # (and re-post) a still-flapping event.
+            confirm_events_with_probe(db, results)
+            active_ids, resolved_ids = recompute(db)
+            await check_and_send_alerts(db, active_ids)
             await check_and_send_resolved_alerts(db, resolved_ids)
         finally:
             db.close()

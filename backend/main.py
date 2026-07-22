@@ -12,10 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from .analyzer import get_country_status
+from .coalescer import backfill, country_status, duration_label, span_seconds
 from .config import config
-from .database import get_db, init_db
-from .models import Banner, OutageEvent
+from .database import SessionLocal, get_db, init_db
+from .models import Banner, CoalescedEvent
 from .scheduler import run_api_collection, run_probe_collection, start_scheduler, stop_scheduler
 from .security import SecurityHeadersMiddleware, rate_limit, require_admin
 
@@ -28,6 +28,18 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # First run after enabling the coalesced layer: derive it from all raw
+    # history so the 30-day feed/counts are correct immediately, and mark
+    # pre-existing incidents as already-announced so we don't retro-blast
+    # social posts. Idempotent — a no-op once the table is populated.
+    db = SessionLocal()
+    try:
+        if db.query(CoalescedEvent).count() == 0:
+            backfill(db)
+    except Exception as exc:
+        logging.getLogger(__name__).error(f"[startup] backfill failed: {exc}")
+    finally:
+        db.close()
     start_scheduler()
     asyncio.create_task(run_api_collection())
     asyncio.create_task(run_probe_collection())
@@ -59,7 +71,17 @@ app.add_middleware(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _e(ev: OutageEvent) -> dict:
+def _iso(dt):
+    return (dt.isoformat() + "Z") if dt else None
+
+
+def _e(ev: CoalescedEvent) -> dict:
+    """
+    Serialize a coalesced event. start_time/end_time keep their old names for
+    frontend compatibility but now carry the honest OBSERVED window; the
+    explicit observed_* / ongoing / duration_label fields are the ones new code
+    should read. end_time is only set once the event has truly closed.
+    """
     return {
         "id":              ev.id,
         "country_code":    ev.country_code,
@@ -71,15 +93,24 @@ def _e(ev: OutageEvent) -> dict:
         "severity":        ev.severity,
         "severity_score":  ev.severity_score,
         "source":          ev.source,
+        "sources":         ev.sources,
         "source_url":      ev.source_url,
         "actual_value":    ev.actual_value,
         "baseline_value":  ev.baseline_value,
-        "start_time":      (ev.start_time.isoformat() + "Z") if ev.start_time else None,
-        "end_time":        (ev.end_time.isoformat()   + "Z") if ev.end_time   else None,
-        "is_active":       ev.is_active,
+        "drop_pct":        ev.drop_pct,
+        "sample_count":    ev.sample_count,
+        # Honest observed window (never raw sample spacing).
+        "start_time":      _iso(ev.observed_start),
+        "end_time":        _iso(ev.observed_end) if ev.resolved else None,
+        "observed_start":  _iso(ev.observed_start),
+        "observed_end":    _iso(ev.observed_end) if ev.resolved else None,
+        "observed_span_seconds": span_seconds(ev.observed_start, ev.observed_end) if ev.resolved else None,
+        "duration_label":  duration_label(ev),
+        "ongoing":         bool(ev.is_active),
+        "is_active":       bool(ev.is_active),
         "probe_confirmed": bool(ev.probe_confirmed),
         "resolved":        bool(ev.resolved),
-        "resolved_at":     (ev.resolved_at.isoformat() + "Z") if ev.resolved_at else None,
+        "resolved_at":     _iso(ev.resolved_at),
     }
 
 
@@ -92,14 +123,15 @@ def _cut(hours: int = 24):
 @app.get("/api/status", dependencies=[Depends(rate_limit)])
 def api_status(db: Session = Depends(get_db)):
     cut   = _cut(24)
-    total = db.query(OutageEvent).filter(
-        OutageEvent.is_active.is_(True), OutageEvent.start_time >= cut).count()
-    severe = db.query(OutageEvent).filter(
-        OutageEvent.is_active.is_(True), OutageEvent.severity == "severe",
-        OutageEvent.start_time >= cut).count()
-    confirmed = db.query(OutageEvent).filter(
-        OutageEvent.is_active.is_(True), OutageEvent.probe_confirmed.is_(True),
-        OutageEvent.start_time >= cut).count()
+    total = db.query(CoalescedEvent).filter(
+        CoalescedEvent.is_active.is_(True), CoalescedEvent.observed_start >= cut,
+        CoalescedEvent.severity != "normal").count()
+    severe = db.query(CoalescedEvent).filter(
+        CoalescedEvent.is_active.is_(True), CoalescedEvent.severity == "severe",
+        CoalescedEvent.observed_start >= cut).count()
+    confirmed = db.query(CoalescedEvent).filter(
+        CoalescedEvent.is_active.is_(True), CoalescedEvent.probe_confirmed.is_(True),
+        CoalescedEvent.observed_start >= cut).count()
     return {
         "status":        "ok",
         "active_events": total,
@@ -121,44 +153,48 @@ def api_events(
     active_only: bool = True,
     db: Session = Depends(get_db),
 ):
-    q = db.query(OutageEvent)
+    q = db.query(CoalescedEvent)
     if active_only:
-        q = q.filter(OutageEvent.is_active.is_(True), OutageEvent.start_time >= _cut(24))
+        q = q.filter(CoalescedEvent.is_active.is_(True), CoalescedEvent.observed_start >= _cut(24))
     if severity:
-        q = q.filter(OutageEvent.severity == severity)
+        q = q.filter(CoalescedEvent.severity == severity)
+    else:
+        # "normal" == normal-variance (a sub-MINOR_PCT dip); not a real event.
+        q = q.filter(CoalescedEvent.severity != "normal")
     if country:
-        q = q.filter(OutageEvent.country_code == country.upper())
+        q = q.filter(CoalescedEvent.country_code == country.upper())
     total = q.count()
-    rows  = q.order_by(desc(OutageEvent.severity_score), desc(OutageEvent.start_time))              .offset(offset).limit(limit).all()
+    rows  = q.order_by(desc(CoalescedEvent.severity_score), desc(CoalescedEvent.observed_start))              .offset(offset).limit(limit).all()
     return {"events": [_e(r) for r in rows], "total": total}
 
 
 @app.get("/api/countries", dependencies=[Depends(rate_limit)])
 def api_countries(db: Session = Depends(get_db)):
-    return {"countries": list(get_country_status(db).values())}
+    return {"countries": list(country_status(db).values())}
 
 
 @app.get("/api/countries/{code}", dependencies=[Depends(rate_limit)])
 def api_country(code: str, db: Session = Depends(get_db)):
     code = code.upper()
     active = (
-        db.query(OutageEvent)
-        .filter(OutageEvent.country_code == code,
-                OutageEvent.is_active.is_(True),
-                OutageEvent.start_time >= _cut(24))
-        .order_by(desc(OutageEvent.severity_score)).all()
+        db.query(CoalescedEvent)
+        .filter(CoalescedEvent.country_code == code,
+                CoalescedEvent.is_active.is_(True),
+                CoalescedEvent.observed_start >= _cut(24),
+                CoalescedEvent.severity != "normal")
+        .order_by(desc(CoalescedEvent.severity_score)).all()
     )
     history = (
-        db.query(OutageEvent)
-        .filter(OutageEvent.country_code == code,
-                OutageEvent.start_time >= _cut(24 * 30))
-        .order_by(OutageEvent.start_time).all()
+        db.query(CoalescedEvent)
+        .filter(CoalescedEvent.country_code == code,
+                CoalescedEvent.observed_start >= _cut(24 * 30))
+        .order_by(CoalescedEvent.observed_start).all()
     )
     name   = active[0].country_name if active else (history[0].country_name if history else code)
     status = active[0].severity     if active else "normal"
     daily: dict = {}
     for ev in history:
-        day = ev.start_time.strftime("%Y-%m-%d")
+        day = ev.observed_start.strftime("%Y-%m-%d")
         if day not in daily or ev.severity_score > daily[day]["score"]:
             daily[day] = {"date": day, "score": ev.severity_score, "status": ev.severity}
     return {
@@ -185,15 +221,15 @@ def api_country_history(
     incident (a protest, a reported shutdown) shows up in the data.
     """
     code = code.upper()
-    q = db.query(OutageEvent).filter(
-        OutageEvent.country_code == code,
-        OutageEvent.start_time >= _cut(24 * days),
+    q = db.query(CoalescedEvent).filter(
+        CoalescedEvent.country_code == code,
+        CoalescedEvent.observed_start >= _cut(24 * days),
     )
     if category == "outages":
-        q = q.filter(OutageEvent.event_type.in_(["shutdown", "disruption"]))
+        q = q.filter(CoalescedEvent.event_type.in_(["shutdown", "disruption"]))
     elif category == "censorship":
-        q = q.filter(OutageEvent.event_type == "censorship")
-    rows = q.order_by(desc(OutageEvent.start_time)).limit(500).all()
+        q = q.filter(CoalescedEvent.event_type == "censorship")
+    rows = q.order_by(desc(CoalescedEvent.observed_start)).limit(500).all()
     return {"code": code, "days": days, "events": [_e(r) for r in rows], "total": len(rows)}
 
 
@@ -207,12 +243,13 @@ def api_events_resolved(
     """Events that were resolved within the last N days (default 7)."""
     since = datetime.datetime.utcnow() - datetime.timedelta(days=days)
     rows = (
-        db.query(OutageEvent)
+        db.query(CoalescedEvent)
         .filter(
-            OutageEvent.resolved.is_(True),
-            OutageEvent.resolved_at >= since,
+            CoalescedEvent.resolved.is_(True),
+            CoalescedEvent.resolved_at >= since,
+            CoalescedEvent.severity != "normal",
         )
-        .order_by(OutageEvent.resolved_at.desc())
+        .order_by(CoalescedEvent.resolved_at.desc())
         .limit(100)
         .all()
     )
@@ -315,6 +352,18 @@ async def api_admin_probe():
     """
     asyncio.create_task(run_probe_collection())
     return {"status": "ok", "message": "Probe cycle triggered"}
+
+
+@app.post("/api/admin/backfill", dependencies=[Depends(require_admin)])
+def api_admin_backfill(db: Session = Depends(get_db)):
+    """
+    Re-coalesce ALL historical raw observations into the derived CoalescedEvent
+    layer, retroactively correcting inflated 30-day counts and dishonest
+    durations. Idempotent; pre-existing incidents are marked already-announced
+    so this never triggers a burst of social posts. Runs synchronously and
+    returns a summary.
+    """
+    return {"status": "ok", **backfill(db)}
 
 
 # ── Admin banner management (require X-Admin-Key header) ─────────────────────
