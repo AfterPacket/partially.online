@@ -481,9 +481,9 @@ def country_status(db: Session, now=None, window_hours=24) -> dict:
         
         status[cc]["active_events"] += 1
 
-    # Escalate severity based on the number of active events
-    # If a country has multiple significant/severe events, it's considered 'severe' overall
     for cc, data in status.items():
+        # Escalate severity based on the number of active events
+        # If a country has multiple significant/severe events, it's considered 'severe' overall
         if data["active_events"] >= 3 and data["status"] in ("significant", "severe"):
             data["status"] = "severe"
             
