@@ -10,6 +10,8 @@ Aggregates data from IODA, OONI, and Cloudflare Radar into a live world map.
 - Live world map coloured by outage severity
 - Severity levels: Minor / Significant / Severe
 - Trinocular-style Bayesian probing for independent outage confirmation
+- Two-tier confidence: every event is labeled by what independently
+  corroborates it (see [Confirmation tiers](#confirmation-tiers))
 - Historical 30-day timeline per country
 - Event detail panel with source attribution and probe confirmation
 - Discord/webhook alerting for significant events
@@ -105,6 +107,44 @@ so the banner stays dismissed across page refreshes.
 | Minor | 1–39 | Elevated anomalies, possible throttling |
 | Significant | 40–74 | Clear disruption or confirmed censorship |
 | Severe | 75–100 | Near-total shutdown or extreme filtering |
+
+When a signal-vs-baseline measurement exists, severity is classified by the
+size of the drop — never by the source's own label. The same rule applies to
+the event *type*: a source may call any BGP-datasource alert a "shutdown",
+but it is only reported as one here if the signal actually collapsed
+(≥ `SEVERITY_SEVERE_PCT`, default 50%); smaller dips are reported as the
+generic "disruption".
+
+## Confirmation tiers
+
+Raw source alert feeds are early-warning signals, not verified outages —
+IODA, for example, reprocesses its data and *retracts* raw alerts after the
+fact, so an alert we ingested can later vanish from the source entirely.
+Rather than presenting every raw alert as a confirmed incident, each event
+carries a confirmation tier stating exactly what corroborates it:
+
+| Tier | Meaning |
+|------|---------|
+| `source` | The source's curated/verified outage feed (IODA `/outages/events`) published a matching outage — persistent and externally checkable |
+| `probe` | Our active Trinocular-style probing independently confirmed it |
+| `multi-source` | Two or more independent sources observed the same condition |
+| `magnitude` | The drop is self-evident (≥ severe threshold); a ≥50% signal collapse is not measurement noise |
+| `unconfirmed` | Raw signal only — may later prove a false positive |
+
+How it shapes reporting:
+
+- Every collection cycle cross-checks recent raw IODA rows against IODA's
+  curated outage feed (`backend/verifier.py`) and upgrades matches to
+  `source`.
+- Event descriptions state the evidence in plain language; an event that
+  ends without any corroboration is labeled *"Unconfirmed — no independent
+  corroboration was observed; possible false positive"*, never presented as
+  a verified outage that ended.
+- Social posts (Discord/Mastodon) are **only sent for corroborated events**.
+  A genuine shutdown is `magnitude`-confirmed on the first cycle, so real
+  incidents still alert immediately; a wobble that nothing backs up is never
+  announced.
+- The API exposes `confirmation` and a boolean `confirmed` on every event.
 
 ## Deployment
 
