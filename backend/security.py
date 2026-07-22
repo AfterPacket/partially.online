@@ -46,18 +46,26 @@ async def require_admin(
 # ── Rate limiter (no extra dependencies) ─────────────────────────────────────
 
 class _RateLimiter:
-    def __init__(self, max_req: int, window_s: int = 60):
-        self._max     = max_req
-        self._window  = window_s
+    def __init__(self, max_req: int, window_s: int = 60, max_keys: int = 10000):
+        self._max      = max_req
+        self._window   = window_s
+        self._max_keys = max_keys
         self._log: dict = defaultdict(list)
 
     def is_allowed(self, key: str) -> bool:
         now    = time.monotonic()
         cutoff = now - self._window
-        self._log[key] = [t for t in self._log[key] if t > cutoff]
+        bucket = self._log[key]
+        self._log[key] = [t for t in bucket if t > cutoff]
         if len(self._log[key]) >= self._max:
             return False
         self._log[key].append(now)
+        # Bound memory: if too many distinct keys have been seen, drop any
+        # that are currently empty (idle). Prevents an attacker rotating the
+        # client-IP header from growing the dict without limit.
+        if len(self._log) > self._max_keys:
+            for k in [k for k, v in self._log.items() if not v]:
+                del self._log[k]
         return True
 
 
@@ -71,14 +79,23 @@ async def rate_limit(request: Request) -> None:
 
 
 def _client_ip(request: Request) -> str:
-    # When behind a reverse proxy (nginx), X-Forwarded-For is set by the
-    # proxy. The rightmost entry is the one added by the proxy we control.
-    # The leftmost entries can be spoofed by the client, so we use the
-    # rightmost entry (closest to our proxy) when we have more than one hop.
-    # When running without a proxy, request.client.host is authoritative.
+    # Trust chain in production: Client -> Cloudflare -> nginx -> app.
+    #
+    # Cloudflare sets CF-Connecting-IP to the real client IP and OVERWRITES
+    # any client-supplied value, so it is unspoofable and is the preferred
+    # source. Without it (local dev / no Cloudflare), fall back to the
+    # rightmost X-Forwarded-For entry (set by the trusted proxy directly in
+    # front of us) and finally to the socket peer.
+    #
+    # Using the rightmost XFF entry alone is WRONG behind Cloudflare: nginx's
+    # $proxy_add_x_forwarded_for appends Cloudflare's EDGE ip, not the client,
+    # so rate limiting would key on a handful of Cloudflare edge IPs and the
+    # audit log would record those instead of real requesters.
+    cf = request.headers.get("CF-Connecting-IP")
+    if cf:
+        return cf.split(",")[0].strip()
     fwd = request.headers.get("X-Forwarded-For")
     if fwd:
-        # Take the last entry — set by the trusted proxy directly in front of us
         return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
@@ -148,6 +165,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # hard refresh. no-cache forces revalidation on every load; unchanged
         # files still return as cheap 304s via StaticFiles' ETag support.
         h.setdefault("Cache-Control", "no-cache")
-        # Uncomment when deployed behind HTTPS:
-        # h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        # Strict-Transport-Security: we sit behind Cloudflare which terminates
+        # TLS. Setting it here ensures the header is present at the origin so
+        # Cloudflare's "respect origin" HSTS mode (or any future direct-HTTPS
+        # path) honours it. Capped at 1 year with subdomains.
+        h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
