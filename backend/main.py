@@ -9,7 +9,7 @@ from html import escape as _esc
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -502,22 +502,124 @@ def _render_meta() -> str:
     return "\n  ".join(tags)
 
 
-def _index_html() -> str:
-    """index.html with the <!--META--> placeholder replaced by env-driven tags."""
+# Confirmation-tier labels, mirroring app.js _confirmTagHTML — the server render
+# needs the same text so crawlers/no-JS visitors see the honest confidence tier.
+_CONF_LABEL = {
+    "source":       "&#10003; source verified",
+    "probe":        "&#10003; probe confirmed",
+    "multi-source": "&#10003; multi-source",
+    "magnitude":    "&#10003; signal collapse",
+}
+
+
+def _safe_class(s) -> str:
+    """Strip to a CSS-class-safe token (mirrors app.js safeClass)."""
+    return re.sub(r"[^a-zA-Z0-9-]", "", str(s or ""))
+
+
+def _events_html(db: Session) -> str:
+    """Server-render the current active events into #event-list.
+
+    Crawlers and no-JS visitors get real, indexable content (country names,
+    event titles, types, honest observed windows); app.js overwrites this on
+    load via innerHTML. Mirrors /api/events' default query, sort and card
+    markup so there's no visible reshuffle when the live JS hydrates.
+    """
+    rows = (
+        db.query(CoalescedEvent)
+        .filter(CoalescedEvent.is_active.is_(True),
+                CoalescedEvent.observed_start >= _cut(24),
+                CoalescedEvent.severity != "normal")
+        .order_by(desc(CoalescedEvent.severity_score), desc(CoalescedEvent.observed_start))
+        .limit(200).all()
+    )
+    if not rows:
+        return '<div class="empty">No active internet outages right now.</div>'
+
+    cards = []
+    for row in rows:
+        ev = _e(row)
+        conf = ev["confirmation"]
+        conf_html = (f'<span class="probe-tag">{_CONF_LABEL[conf]}</span>'
+                     if conf in _CONF_LABEL
+                     else '<span class="probe-tag probe-unconfirmed">unconfirmed</span>')
+        region = (f'<span class="region-tag">{_esc(ev["region_name"])}</span>'
+                  if ev["region_name"] else "")
+        sources = _esc((ev["sources"] or ev["source"] or "").upper())
+        cards.append(
+            f'<div class="event-card" data-country="{_esc(ev["country_code"])}">'
+            f'<div class="ec-top">'
+            f'<span class="sev-pip sev-{_safe_class(ev["severity"])}"></span>'
+            f'<span class="ec-title">{_esc(ev["title"])}</span>'
+            f'</div>'
+            f'<div class="ec-meta">'
+            f'<span class="type-tag">{_esc(ev["event_type"])}</span>'
+            f'{region}'
+            f'<span>{_esc(ev["country_name"])}</span>'
+            f'<span class="source-tag">{sources}</span>'
+            f'{conf_html}'
+            f'<span class="ec-when" style="margin-left:auto">{_esc(ev["duration_label"] or "")}</span>'
+            f'</div>'
+            f'</div>'
+        )
+    return "".join(cards)
+
+
+def _index_html(events_html: str) -> str:
+    """index.html with the <!--META--> and <!--EVENTS--> placeholders filled."""
     try:
         with open(_INDEX_PATH, encoding="utf-8") as fh:
             doc = fh.read()
     except OSError:
         return f"<!doctype html><title>{_esc(_SITE_TITLE_DEFAULT)}</title>"
-    return doc.replace("<!--META-->", _render_meta())
+    return (doc.replace("<!--META-->", _render_meta())
+               .replace("<!--EVENTS-->", events_html))
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt() -> PlainTextResponse:
+    base = (config.PUBLIC_SITE_URL or "").rstrip("/")
+    body = "User-agent: *\nAllow: /\n"
+    if base:
+        body += f"Sitemap: {base}/sitemap.xml\n"
+    return PlainTextResponse(body)
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml() -> Response:
+    # Homepage only for now; per-country pages (/country/{code}) get added here
+    # when that feature lands — see the internal roadmap. Needs PUBLIC_SITE_URL
+    # for absolute <loc>s; without it we emit a valid but empty urlset.
+    base = (config.PUBLIC_SITE_URL or "").rstrip("/")
+    today = datetime.date.today().isoformat()
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    if base:
+        lines.append(f"  <url><loc>{_esc(base)}/</loc><lastmod>{today}</lastmod>"
+                     f"<changefreq>hourly</changefreq><priority>1.0</priority></url>")
+    lines.append("</urlset>")
+    return Response("\n".join(lines) + "\n", media_type="application/xml")
 
 
 if os.path.isdir(_fe):
-    # Serve "/" and /index.html through the injection layer so the meta tags
-    # are present in the markup; StaticFiles still handles css/js/other assets.
+    # Serve "/" and /index.html through the injection layer so the meta tags and
+    # server-rendered events are present in the markup; StaticFiles still handles
+    # css/js/other assets.
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
     def serve_index() -> HTMLResponse:
-        return HTMLResponse(_index_html())
+        # A dead DB must never take the homepage down: fall back to the JS
+        # loading state (app.js fetches /api/events regardless) and still ship
+        # the meta tags.
+        events_html = '<div class="loading">Loading events&hellip;</div>'
+        try:
+            db = SessionLocal()
+            try:
+                events_html = _events_html(db)
+            finally:
+                db.close()
+        except Exception:
+            logging.getLogger(__name__).exception("[serve_index] event render failed")
+        return HTMLResponse(_index_html(events_html))
 
     app.mount("/", StaticFiles(directory=_fe, html=True), name="static")
