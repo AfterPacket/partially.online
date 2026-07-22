@@ -252,18 +252,19 @@ def api_events_resolved(
 ):
     """Events that were resolved within the last N days (default 7)."""
     since = datetime.datetime.utcnow() - datetime.timedelta(days=days)
-    rows = (
+    q = (
         db.query(CoalescedEvent)
         .filter(
             CoalescedEvent.resolved.is_(True),
             CoalescedEvent.resolved_at >= since,
             CoalescedEvent.severity != "normal",
         )
-        .order_by(CoalescedEvent.resolved_at.desc())
-        .limit(100)
-        .all()
     )
-    return {"events": [_e(r) for r in rows], "total": len(rows)}
+    # True window count — the list itself is capped at 100 for payload size,
+    # so len(rows) would peg at exactly 100 on a busy week.
+    total = q.count()
+    rows = q.order_by(CoalescedEvent.resolved_at.desc()).limit(100).all()
+    return {"events": [_e(r) for r in rows], "total": total}
 
 
 # ── Public banners ─────────────────────────────────────────────────────────────

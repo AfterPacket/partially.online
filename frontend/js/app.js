@@ -124,7 +124,7 @@ async function loadAll() {
     }
     // Load resolved events in parallel (non-blocking)
     apiFetch('/api/events/resolved?days=7').then(r => {
-      if (r) renderResolvedBar(r.events || []);
+      if (r) renderResolvedBar(r.events || [], r.total);
     });
   } catch (e) {
     console.error('loadAll failed:', e);
@@ -515,7 +515,7 @@ function _setupResolvedBar() {
   });
 }
 
-function renderResolvedBar(events) {
+function renderResolvedBar(events, total) {
   const bar   = document.getElementById('resolved-bar');
   const list  = document.getElementById('resolved-list');
   const count = document.getElementById('resolved-count');
@@ -526,7 +526,8 @@ function renderResolvedBar(events) {
   }
 
   bar.classList.remove('hidden');
-  count.textContent = events.length + ' in last 7 days';
+  // Server total = true window count; the list itself is capped at 100.
+  count.textContent = (total || events.length) + ' in last 7 days';
 
   list.innerHTML = events.map(ev => {
     const resolvedAgo = ev.resolved_at ? _relTime(new Date(ev.resolved_at)) : '';
