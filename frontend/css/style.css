@@ -328,7 +328,13 @@ body { display: flex; flex-direction: column; }
 
 .ec-meta {
   display: flex;
-  gap: 8px;
+  /* Wrap onto multiple lines: up to 7 items (type/region/country/source/
+     confidence/observed-window/Share) can't fit on one 300px line. Without
+     wrap they get crushed into narrow columns and align-items:stretch
+     inflates every tag into a tall box. */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   font-size: 11px;
   color: var(--text-dim);
 }
@@ -343,6 +349,10 @@ body { display: flex; flex-direction: column; }
 }
 
 .source-tag { color: var(--text-dim); }
+
+/* Honest observed-window label ("ongoing since … UTC") — keep it on one
+   wrapped line instead of breaking mid-date. */
+.ec-when { white-space: nowrap; }
 
 .region-tag {
   background: rgba(59,130,246,0.12);
@@ -530,7 +540,7 @@ body { display: flex; flex-direction: column; }
 .detail-ev:last-child { border-bottom: none; }
 .dev-title { font-weight: 500; margin-bottom: 3px; }
 .dev-desc  { color: var(--text-dim); font-size: 12px; line-height: 1.4; }
-.dev-meta  { display: flex; gap: 8px; margin-top: 4px; align-items: center; }
+.dev-meta  { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; align-items: center; }
 .dev-link  { color: var(--accent); font-size: 11px; text-decoration: none; }
 .dev-link:hover { text-decoration: underline; }
 
