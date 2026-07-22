@@ -298,7 +298,9 @@ body { display: flex; flex-direction: column; }
 
 .ec-top {
   display: flex;
-  align-items: center;
+  /* flex-start, not center: titles can wrap to two lines and the severity
+     pip should sit on the first line, not float mid-block. */
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 4px;
 }
@@ -307,15 +309,19 @@ body { display: flex; flex-direction: column; }
   width: 8px; height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  /* Optically center on the title's first text line (13px × 1.35 ≈ 18px). */
+  margin-top: 5px;
 }
 
 .ec-title {
   font-size: 13px;
   font-weight: 500;
   flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  line-height: 1.35;
+  /* Wrap instead of ellipsizing — "Sulawesi Barat, I…" told nobody anything.
+     Titles are short; worst case is two lines. */
+  overflow-wrap: break-word;
 }
 
 .ec-meta {
