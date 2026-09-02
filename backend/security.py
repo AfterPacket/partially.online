@@ -135,7 +135,7 @@ def _build_csp() -> str:
         "default-src 'self'; "
         f"script-src {' '.join(script_domains)}; "
         "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "
-        "img-src 'self' data: https://*.basemaps.cartocdn.com https://pagead2.googlesyndication.com; "
+        "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://pagead2.googlesyndication.com; "
         "connect-src 'self' https://cdn.jsdelivr.net; "
         f"frame-src {' '.join(frame_domains)}; "
         "font-src 'self'; "

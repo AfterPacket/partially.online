@@ -247,9 +247,11 @@ function initMap() {
     zoomControl: true, attributionControl: true,
   });
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-    subdomains: 'abcd', maxZoom: 19,
+  // CARTO's public basemap endpoint now requires an API key. Use the
+  // standard OSM tile service so the public map works without a client key.
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains: 'abc', maxZoom: 19,
   }).addTo(leafletMap);
 
   _loadCountriesGeo();
