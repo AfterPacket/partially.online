@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 
 import httpx
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .coalescer import duration_label, span_label
 from .config import config
-from .models import CoalescedAlert, CoalescedEvent
+from .models import CoalescedAlert, CoalescedAlertState, CoalescedEvent
 
 log = logging.getLogger(__name__)
 
@@ -15,6 +16,9 @@ log = logging.getLogger(__name__)
 # cycle is fine, but a burst of simultaneous resolutions shouldn't hammer
 # the instance.  Stagger each post by this many seconds.
 _POST_INTERVAL_SEC = 2
+# A second, per-event guard against accidental requalification or duplicate
+# scheduler runs.  This is deliberately much longer than the API poll period.
+_EVENT_POST_INTERVAL_SEC = config.MASTODON_EVENT_MIN_INTERVAL_HOURS * 60 * 60
 
 _COLORS = {"severe": 0xFF3333, "significant": 0xFF8C00, "minor": 0xFFD700}
 _EMOJI  = {"severe": "D", "significant": "O", "minor": "Y"}
@@ -154,8 +158,10 @@ async def _send_mastodon(event: CoalescedEvent, resolved: bool = False) -> bool:
                 headers={
                     "Authorization": f"Bearer {config.MASTODON_ACCESS_TOKEN}",
                     # Instance-side dedupe if the same status is retried.
-                    "Idempotency-Key": f"coalesced-event-{event.id}"
-                                       + ("-resolved" if resolved else ""),
+                    # Include lifecycle/severity so a genuine escalation is
+                    # not mistaken for a retry of the original event post.
+                    "Idempotency-Key": f"coalesced-event-{event.id}-"
+                                       f"{_state_value(event, resolved=resolved)}",
                 },
                 data={
                     "status":     _status_text(event, resolved=resolved),
@@ -180,18 +186,44 @@ def _channels():
     return channels
 
 
+_ALERT_SEVERITIES = ("significant", "severe", "critical")
+
+
+def _state_value(ev: CoalescedEvent, resolved: bool = False) -> str:
+    return f"{'resolved' if resolved else 'active'}:{ev.severity}"
+
+
+def _state_row(db: Session, event_id: int, channel: str):
+    return db.query(CoalescedAlertState).filter(
+        CoalescedAlertState.event_id == event_id,
+        CoalescedAlertState.channel == channel,
+    ).first()
+
+
+def _event_post_allowed(state, now: datetime.datetime) -> bool:
+    return (state.last_posted_at is None or
+            (now - state.last_posted_at).total_seconds() >= _EVENT_POST_INTERVAL_SEC)
+
+
+def _legacy_open_sent(db: Session, event_id: int, channel: str) -> bool:
+    return db.query(CoalescedAlert).filter(
+        CoalescedAlert.event_id == event_id,
+        CoalescedAlert.channel == channel,
+    ).first() is not None
+
+
 async def check_and_send_alerts(db: Session, event_ids: list):
     """
-    Post an "opened" notice, at most once per coalesced event per channel. Safe
-    to call every cycle with all currently-active alert-worthy ids: the
-    CoalescedAlert dedup skips anything already announced.
+    Post only when an eligible event's active/severity state changes. Safe to
+    call every cycle with all currently-active ids: unchanged observations are
+    ignored, and a per-event interval guards against rapid requalification.
     """
     channels = _channels()
     if not channels or not event_ids:
         return
     for eid in event_ids:
         ev = db.query(CoalescedEvent).filter(CoalescedEvent.id == eid).first()
-        if not ev or ev.severity not in ("significant", "severe"):
+        if not ev or ev.severity not in _ALERT_SEVERITIES or not ev.is_active:
             continue
         # Never publicly announce an event nothing corroborates: raw source
         # alerts get retracted after reprocessing (see backend/verifier.py),
@@ -202,13 +234,30 @@ async def check_and_send_alerts(db: Session, event_ids: list):
         if (ev.confirmation or "unconfirmed") == "unconfirmed":
             continue
         for channel, send in channels:
-            already = db.query(CoalescedAlert).filter(
-                CoalescedAlert.event_id == eid,
-                CoalescedAlert.channel == channel).first()
-            if already:
+            state = _state_row(db, eid, channel)
+            if state is None:
+                state = CoalescedAlertState(event_id=eid, channel=channel)
+                # Preserve the old post-once table when upgrading an existing
+                # deployment, so startup cannot retro-post historical events.
+                if _legacy_open_sent(db, eid, channel):
+                    state.last_posted_state = _state_value(ev)
+                    state.last_posted_at = now = datetime.datetime.utcnow()
+                db.add(state)
+                db.flush()
+            new_state = _state_value(ev)
+            state.last_known_state = new_state
+            # If a state was rate-limited earlier, it remains different from
+            # last_posted_state and will be retried once the interval expires.
+            if state.last_posted_state == new_state:
+                continue
+            now = datetime.datetime.utcnow()
+            if not _event_post_allowed(state, now):
                 continue
             if await _rate_limited(send, ev):
-                db.add(CoalescedAlert(event_id=eid, channel=channel, message=ev.title))
+                state.last_posted_state = new_state
+                state.last_posted_at = datetime.datetime.utcnow()
+                db.add(CoalescedAlert(event_id=eid, channel=channel,
+                                      message=ev.title))
     db.commit()
 
 
@@ -224,21 +273,30 @@ async def check_and_send_resolved_alerts(db: Session, resolved_event_ids: list):
         return
     for eid in resolved_event_ids:
         ev = db.query(CoalescedEvent).filter(CoalescedEvent.id == eid).first()
-        if not ev or ev.severity not in ("significant", "severe"):
+        if not ev or ev.severity not in _ALERT_SEVERITIES:
             continue
         for channel, send in channels:
-            announced = db.query(CoalescedAlert).filter(
-                CoalescedAlert.event_id == eid,
-                CoalescedAlert.channel == channel).first()
-            if not announced:
+            state = _state_row(db, eid, channel)
+            announced = (state and state.last_posted_state and
+                         state.last_posted_state.startswith("active:"))
+            if not announced and not _legacy_open_sent(db, eid, channel):
                 continue
             resolved_channel = f"{channel}-resolved"
-            already = db.query(CoalescedAlert).filter(
-                CoalescedAlert.event_id == eid,
-                CoalescedAlert.channel == resolved_channel).first()
-            if already:
+            if _legacy_open_sent(db, eid, resolved_channel):
+                continue
+            # Resolution has its own audit channel but shares the event's
+            # throttle/state row with the open lifecycle.
+            if state is None:
+                state = CoalescedAlertState(event_id=eid, channel=channel)
+                db.add(state)
+                db.flush()
+            new_state = _state_value(ev, resolved=True)
+            state.last_known_state = new_state
+            if state.last_posted_state == new_state:
                 continue
             if await _rate_limited(send, ev, resolved=True):
+                state.last_posted_state = new_state
+                state.last_posted_at = datetime.datetime.utcnow()
                 db.add(CoalescedAlert(event_id=eid, channel=resolved_channel,
                                       message=f"Resolved: {ev.title}"))
     db.commit()

@@ -51,6 +51,7 @@ Open http://localhost:8000 in your browser.
 | `MASTODON_INSTANCE_URL` | (empty) | Mastodon instance, e.g. `https://mastodon.social` |
 | `MASTODON_ACCESS_TOKEN` | (empty) | Access token with `write:statuses` scope |
 | `MASTODON_VISIBILITY` | public | Post visibility: `public` / `unlisted` / `private` |
+| `MASTODON_EVENT_MIN_INTERVAL_HOURS` | 6 | Minimum interval between active/severity posts for the same event |
 | `PUBLIC_SITE_URL` | (empty) | Public URL of this site, linked in social posts |
 | `SITE_HASHTAG` | (empty) | Site hashtag added to social posts, e.g. `#PartiallyOnline` |
 | `SPONSOR_GOOGLE_ID` | (empty) | Google AdSense client ID (e.g. `ca-pub-1234567890123456`) |
@@ -144,6 +145,11 @@ How it shapes reporting:
   A genuine shutdown is `magnitude`-confirmed on the first cycle, so real
   incidents still alert immediately; a wobble that nothing backs up is never
   announced.
+- Social notifications are state-diffed per coalesced event (country/region +
+  event type): a new event, a severity change, or a resolution can post, but
+  unchanged active polls do not. A persistent per-event state record and the
+  `MASTODON_EVENT_MIN_INTERVAL_HOURS` safety limit prevent duplicate posts if
+  an event is accidentally re-qualified or the scheduler runs twice.
 - The API exposes `confirmation` and a boolean `confirmed` on every event.
 
 ## Deployment

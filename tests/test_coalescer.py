@@ -18,7 +18,7 @@ from sqlalchemy.pool import StaticPool
 from backend.coalescer import (CLEAR_HYSTERESIS, GAP_MERGE, classify_severity,
                                duration_label, effective_event_type,
                                plan_events, recompute)
-from backend.models import Base, CoalescedEvent, OutageEvent
+from backend.models import Base, CoalescedAlertState, CoalescedEvent, OutageEvent
 
 DAY   = dt.datetime(2026, 7, 22)
 START = DAY.replace(hour=14)          # incident begins 14:00 UTC
@@ -402,6 +402,85 @@ def test_unconfirmed_event_is_never_posted(monkeypatch):
     session.commit()
     asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
     assert sent["n"] == 1
+
+
+def _alert_event(session, severity="severe"):
+    ce = CoalescedEvent(
+        country_code="XX", country_name="Xland", event_type="censorship",
+        severity=severity, severity_score=90, sources="ooni", source="ooni",
+        title="Censorship detected in Xland", description="d",
+        confirmation="magnitude", observed_start=START,
+        observed_end=START, is_active=True, resolved=False,
+    )
+    session.add(ce)
+    session.commit()
+    return ce
+
+
+def test_new_event_posts_but_unchanged_poll_does_not(monkeypatch):
+    import backend.alerts as alerts
+    session = _session()
+    ce = _alert_event(session)
+    sent = {"n": 0}
+
+    async def fake_send(ev, resolved=False):
+        sent["n"] += 1
+        return True
+
+    monkeypatch.setattr(alerts, "_channels", lambda: [("mastodon", fake_send)])
+    monkeypatch.setattr(alerts, "_POST_INTERVAL_SEC", 0)
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    assert sent["n"] == 1
+
+
+def test_severity_change_posts_and_resolution_posts(monkeypatch):
+    import backend.alerts as alerts
+    session = _session()
+    ce = _alert_event(session)
+    sent = []
+
+    async def fake_send(ev, resolved=False):
+        sent.append(resolved)
+        return True
+
+    monkeypatch.setattr(alerts, "_channels", lambda: [("mastodon", fake_send)])
+    monkeypatch.setattr(alerts, "_POST_INTERVAL_SEC", 0)
+    monkeypatch.setattr(alerts, "_EVENT_POST_INTERVAL_SEC", 0)
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    ce.severity = "critical"
+    session.commit()
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    ce.is_active = False
+    ce.resolved = True
+    ce.resolved_at = START
+    session.commit()
+    asyncio.run(alerts.check_and_send_resolved_alerts(session, [ce.id]))
+    assert sent == [False, False, True]
+
+
+def test_event_rate_limit_suppresses_rapid_severity_repost(monkeypatch):
+    import backend.alerts as alerts
+    session = _session()
+    ce = _alert_event(session)
+    sent = {"n": 0}
+
+    async def fake_send(ev, resolved=False):
+        sent["n"] += 1
+        return True
+
+    monkeypatch.setattr(alerts, "_channels", lambda: [("mastodon", fake_send)])
+    monkeypatch.setattr(alerts, "_POST_INTERVAL_SEC", 0)
+    monkeypatch.setattr(alerts, "_EVENT_POST_INTERVAL_SEC", 6 * 3600)
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    ce.severity = "critical"
+    session.commit()
+    asyncio.run(alerts.check_and_send_alerts(session, [ce.id]))
+    assert sent["n"] == 1
+    state = session.query(CoalescedAlertState).filter_by(
+        event_id=ce.id, channel="mastodon").one()
+    assert state.last_known_state == "active:critical"
+    assert state.last_posted_state == "active:severe"
 
 
 def test_config_defaults_match_spec():

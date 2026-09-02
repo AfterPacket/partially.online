@@ -127,6 +127,26 @@ class CoalescedAlert(Base):
     message  = Column(Text)
 
 
+class CoalescedAlertState(Base):
+    """Persistent state used to decide whether an event needs a new post.
+
+    ``last_known_state`` advances on every eligible observation, while
+    ``last_posted_state`` advances only after a send succeeds.  Keeping both
+    lets the rate limiter suppress a burst without permanently losing a
+    severity transition.
+    """
+    __tablename__ = "coalesced_alert_states"
+
+    id                = Column(Integer, primary_key=True)
+    event_id          = Column(Integer, ForeignKey("coalesced_events.id"), index=True)
+    channel           = Column(String(100), index=True)
+    last_known_state  = Column(String(40))   # active:severe | resolved:severe
+    last_posted_state = Column(String(40), nullable=True)
+    last_posted_at    = Column(DateTime, nullable=True)
+    updated_at        = Column(DateTime, default=datetime.datetime.utcnow,
+                                onupdate=datetime.datetime.utcnow)
+
+
 class Banner(Base):
     """
     Dismissible site-wide banner notices.
