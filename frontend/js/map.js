@@ -247,12 +247,11 @@ function initMap() {
     zoomControl: true, attributionControl: true,
   });
 
-  // CARTO's public basemap endpoint now requires an API key. Use the
-  // standard OSM tile service so the public map works without a client key.
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    subdomains: 'abc', maxZoom: 19,
-  }).addTo(leafletMap);
+  // The outage view supplies its own vector world map below.  Deliberately
+  // do not add a third-party raster tile layer here: public tile endpoints
+  // commonly reject high-volume/automated traffic with 403 responses, which
+  // leaves their error pages tiled across the dashboard.  The dark Leaflet
+  // background remains visible until the country shapes have loaded.
 
   _loadCountriesGeo();
 }
